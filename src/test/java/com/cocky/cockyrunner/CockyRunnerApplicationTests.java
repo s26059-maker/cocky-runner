@@ -1,4 +1,4 @@
-package com.example.cocky_runner;
+package com.cocky.cockyrunner;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
