@@ -1,0 +1,11 @@
+{
+  "id": "a-plus-b",
+  "title": "A + B",
+  "description": "두 정수를 한 줄에 공백으로 구분하여 입력받아 그 합을 출력한다.",
+  "timeLimitMs": 2000,
+  "testCases": [
+    { "input": "1 2", "expectedOutput": "3", "sample": true },
+    { "input": "-5 5", "expectedOutput": "0", "sample": false },
+    { "input": "-100 -200", "expectedOutput": "-300", "sample": false }
+  ]
+}
