@@ -1,0 +1,13 @@
+spring:
+  application:
+    name: cocky-runner
+
+runner:
+  docker:
+    timeout-seconds: 5
+    memory: 256m
+    cpus: 1.0
+    pids-limit: 64
+    max-output-bytes: 65536
+    images:
+      python: python:3.11-slim
