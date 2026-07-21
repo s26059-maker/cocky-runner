@@ -1,0 +1,26 @@
+> Task :compileJava UP-TO-DATE
+> Task :processResources UP-TO-DATE
+> Task :classes UP-TO-DATE
+> Task :resolveMainClassName UP-TO-DATE
+
+> Task :bootRun
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+
+ :: Spring Boot ::                (v4.1.0)
+
+2026-07-22T08:37:11.078+09:00  INFO 6448 --- [cocky-runner] [           main] c.c.cockyrunner.CockyRunnerApplication   : Starting CockyRunnerApplication using Java 21.0.10 with PID 6448 (C:\Users\master\Downloads\cocky-runner\build\classes\java\main started by master in C:\Users\master\Downloads\cocky-runner)
+2026-07-22T08:37:11.085+09:00  INFO 6448 --- [cocky-runner] [           main] c.c.cockyrunner.CockyRunnerApplication   : No active profile set, falling back to 1 default profile: "default"
+2026-07-22T08:37:12.019+09:00  INFO 6448 --- [cocky-runner] [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 18080 (http)
+2026-07-22T08:37:12.034+09:00  INFO 6448 --- [cocky-runner] [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-07-22T08:37:12.034+09:00  INFO 6448 --- [cocky-runner] [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.22]
+2026-07-22T08:37:12.074+09:00  INFO 6448 --- [cocky-runner] [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 941 ms
+2026-07-22T08:37:12.214+09:00  INFO 6448 --- [cocky-runner] [           main] c.c.c.repository.JsonProblemRepository   : Loaded problem 'a-plus-b' from a-plus-b.json
+2026-07-22T08:37:12.221+09:00  INFO 6448 --- [cocky-runner] [           main] c.c.c.repository.JsonProblemRepository   : Loaded problem 'echo-n-lines' from echo-n-lines.json
+2026-07-22T08:37:12.394+09:00  INFO 6448 --- [cocky-runner] [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 18080 (http) with context path '/'
+2026-07-22T08:37:12.398+09:00  INFO 6448 --- [cocky-runner] [           main] c.c.cockyrunner.CockyRunnerApplication   : Started CockyRunnerApplication in 1.818 seconds (process running for 2.103)
