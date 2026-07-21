@@ -8,6 +8,10 @@ export class ApiError extends Error {
     this.name = 'ApiError'
     this.status = status
   }
+
+  get isNotFound(): boolean {
+    return this.status === 404
+  }
 }
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -40,4 +44,8 @@ async function extractErrorMessage(response: Response): Promise<string> {
     // response body wasn't JSON - fall through to the generic message below
   }
   return `request failed with status ${response.status}`
+}
+
+export function toErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : 'unexpected error'
 }

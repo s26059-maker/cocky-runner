@@ -24,3 +24,6 @@
 2026-07-22T08:37:12.221+09:00  INFO 6448 --- [cocky-runner] [           main] c.c.c.repository.JsonProblemRepository   : Loaded problem 'echo-n-lines' from echo-n-lines.json
 2026-07-22T08:37:12.394+09:00  INFO 6448 --- [cocky-runner] [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 18080 (http) with context path '/'
 2026-07-22T08:37:12.398+09:00  INFO 6448 --- [cocky-runner] [           main] c.c.cockyrunner.CockyRunnerApplication   : Started CockyRunnerApplication in 1.818 seconds (process running for 2.103)
+2026-07-22T08:37:28.508+09:00  INFO 6448 --- [cocky-runner] [io-18080-exec-2] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring DispatcherServlet 'dispatcherServlet'
+2026-07-22T08:37:28.509+09:00  INFO 6448 --- [cocky-runner] [io-18080-exec-2] o.s.web.servlet.DispatcherServlet        : Initializing Servlet 'dispatcherServlet'
+2026-07-22T08:37:28.509+09:00  INFO 6448 --- [cocky-runner] [io-18080-exec-2] o.s.web.servlet.DispatcherServlet        : Completed initialization in 0 ms
