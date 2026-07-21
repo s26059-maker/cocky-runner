@@ -38,7 +38,7 @@ public class DockerRunner {
         this.properties = properties;
     }
 
-    public ExecutionResponse run(Language language, String code, String stdin) {
+    public ExecutionResponse run(Language language, String code, String stdin, long timeoutMs) {
         String image = properties.images().get(language.name().toLowerCase());
         if (image == null) {
             throw new InvalidExecutionRequestException("no docker image configured for language: " + language);
@@ -61,7 +61,7 @@ public class DockerRunner {
             Thread stdoutThread = startDrainThread(stdoutCollector, "docker-stdout-" + containerName);
             Thread stderrThread = startDrainThread(stderrCollector, "docker-stderr-" + containerName);
 
-            boolean finished = process.waitFor(properties.timeoutSeconds(), TimeUnit.SECONDS);
+            boolean finished = process.waitFor(timeoutMs, TimeUnit.MILLISECONDS);
             if (!finished) {
                 process.destroyForcibly();
                 killContainer(containerName);
