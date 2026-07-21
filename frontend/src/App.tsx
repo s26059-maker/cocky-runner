@@ -1,31 +1,23 @@
-import { useEffect, useState } from 'react'
-import { getProblems } from './api/problems'
-import type { ProblemSummary } from './types'
+import { BrowserRouter, Routes, Route, Link } from 'react-router'
+import ProblemListPage from './pages/ProblemListPage'
+import ProblemDetailPage from './pages/ProblemDetailPage'
+import NotFoundPage from './pages/NotFoundPage'
+import './App.css'
 
 function App() {
-  const [problems, setProblems] = useState<ProblemSummary[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    getProblems()
-      .then(setProblems)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'failed to load problems'))
-  }, [])
-
-  if (error) {
-    return <p>Error: {error}</p>
-  }
-
-  if (!problems) {
-    return <p>Loading...</p>
-  }
-
   return (
-    <ul>
-      {problems.map((problem) => (
-        <li key={problem.id}>{problem.title}</li>
-      ))}
-    </ul>
+    <BrowserRouter>
+      <div className="page">
+        <h1>
+          <Link to="/">cocky-runner</Link>
+        </h1>
+        <Routes>
+          <Route path="/" element={<ProblemListPage />} />
+          <Route path="/problems/:id" element={<ProblemDetailPage />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </div>
+    </BrowserRouter>
   )
 }
 
