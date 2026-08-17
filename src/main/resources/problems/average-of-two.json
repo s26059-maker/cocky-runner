@@ -1,0 +1,11 @@
+{
+  "id": "average-of-two",
+  "title": "두 정수의 평균",
+  "description": "정수 두 개 A, B가 한 줄에 공백으로 구분되어 주어진다. (A + B) / 2 의 값을 소수점 셋째 자리에서 반올림하여 소수점 둘째 자리까지 출력한다. 출력에는 소수점 이하 두 자리가 항상 포함되어야 한다 (예: 3.50, 6.00).",
+  "timeLimitMs": 2000,
+  "testCases": [
+    { "input": "1 2", "expectedOutput": "1.50", "sample": true },
+    { "input": "2 4", "expectedOutput": "3.00", "sample": false },
+    { "input": "4 7", "expectedOutput": "5.50", "sample": false }
+  ]
+}
