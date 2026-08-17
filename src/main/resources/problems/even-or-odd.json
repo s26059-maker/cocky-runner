@@ -1,0 +1,12 @@
+{
+  "id": "even-or-odd",
+  "title": "짝수 판별",
+  "description": "정수 N이 주어진다. N이 짝수이면 \"YES\", 홀수이면 \"NO\"를 출력한다. 출력은 대소문자를 구분하므로 반드시 대문자로 출력해야 한다.",
+  "timeLimitMs": 2000,
+  "testCases": [
+    { "input": "4", "expectedOutput": "YES", "sample": true },
+    { "input": "7", "expectedOutput": "NO", "sample": false },
+    { "input": "0", "expectedOutput": "YES", "sample": false },
+    { "input": "-3", "expectedOutput": "NO", "sample": false }
+  ]
+}
