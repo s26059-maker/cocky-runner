@@ -18,7 +18,7 @@ function SubmissionResult({ result, submitError }: SubmissionResultProps) {
     return (
       <div className="submission-result submission-result--danger" role="alert">
         <p className="submission-verdict">제출 실패</p>
-        <pre>{submitError}</pre>
+        <pre className="submission-error-output">{submitError}</pre>
       </div>
     )
   }
@@ -28,10 +28,11 @@ function SubmissionResult({ result, submitError }: SubmissionResultProps) {
   }
 
   const isAccepted = result.verdict === 'AC'
-  // The backend deliberately never returns compiler/runtime error text in this
-  // response (see JudgeResult's javadoc) - it only exposes the verdict and
-  // aggregate counts, so there is no stderr/message to render here.
-  const hasNoErrorDetail = result.verdict === 'RE' || result.verdict === 'ERROR'
+  // The backend only ever fills errorOutput for RE/ERROR on a public sample case
+  // (see JudgeResult's javadoc) - for a hidden-case failure, WA, or TLE it stays
+  // null/undefined, and there is no stderr/message to render.
+  const canHaveErrorDetail = result.verdict === 'RE' || result.verdict === 'ERROR'
+  const errorOutput = result.errorOutput
 
   return (
     <div
@@ -48,9 +49,12 @@ function SubmissionResult({ result, submitError }: SubmissionResultProps) {
         {result.failedCaseNumber != null && <li>실패한 테스트케이스: #{result.failedCaseNumber}</li>}
         <li>최대 실행 시간: {result.maxExecutionTimeMs}ms</li>
       </ul>
-      {hasNoErrorDetail && (
-        <p className="submission-note">서버가 상세 에러 메시지를 제공하지 않습니다.</p>
-      )}
+      {canHaveErrorDetail &&
+        (errorOutput ? (
+          <pre className="submission-error-output">{errorOutput}</pre>
+        ) : (
+          <p className="submission-note">서버가 상세 에러 메시지를 제공하지 않습니다.</p>
+        ))}
     </div>
   )
 }

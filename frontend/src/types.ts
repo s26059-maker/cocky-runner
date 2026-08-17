@@ -31,6 +31,9 @@ export interface SubmissionResponse {
   totalCount: number
   failedCaseNumber: number | null
   maxExecutionTimeMs: number
+  // Only ever populated for RE/ERROR on a public sample test case; null otherwise
+  // (hidden-case failures, WA, TLE) - see JudgeResult on the backend.
+  errorOutput?: string | null
 }
 
 export type ExecutionStatus = 'SUCCESS' | 'RUNTIME_ERROR' | 'TIMEOUT' | 'ERROR'

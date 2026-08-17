@@ -7,6 +7,7 @@ public record SubmissionResponse(
         int passedCount,
         int totalCount,
         Integer failedCaseNumber,
-        long maxExecutionTimeMs
+        long maxExecutionTimeMs,
+        String errorOutput
 ) {
 }
