@@ -126,6 +126,91 @@ class JudgeServiceTest {
     }
 
     @Test
+    void reOnSampleCase_includesErrorOutput() {
+        TestCase tc = new TestCase("in", "out", true);
+        Problem problem = new Problem("p1", "title", "desc", 2000, List.of(tc));
+        when(problemRepository.findById("p1")).thenReturn(Optional.of(problem));
+        when(executionService.execute(any(), eq(2000L)))
+                .thenReturn(new ExecutionResponse(ExecutionStatus.RUNTIME_ERROR, "", "Traceback...\nValueError: invalid literal", 1, 50));
+
+        JudgeResult result = judgeService.judge("p1", Language.PYTHON, "code");
+
+        assertThat(result.verdict()).isEqualTo(Verdict.RE);
+        assertThat(result.errorOutput()).isEqualTo("Traceback...\nValueError: invalid literal");
+    }
+
+    @Test
+    void reOnHiddenCase_errorOutputIsNull() {
+        TestCase tc = new TestCase("in", "out", false);
+        Problem problem = new Problem("p1", "title", "desc", 2000, List.of(tc));
+        when(problemRepository.findById("p1")).thenReturn(Optional.of(problem));
+        when(executionService.execute(any(), eq(2000L)))
+                .thenReturn(new ExecutionResponse(ExecutionStatus.RUNTIME_ERROR, "", "some stderr the client must never see", 1, 50));
+
+        JudgeResult result = judgeService.judge("p1", Language.PYTHON, "code");
+
+        assertThat(result.verdict()).isEqualTo(Verdict.RE);
+        assertThat(result.errorOutput()).isNull();
+    }
+
+    @Test
+    void errorOnSampleCase_includesErrorOutput() {
+        TestCase tc = new TestCase("in", "out", true);
+        Problem problem = new Problem("p1", "title", "desc", 2000, List.of(tc));
+        when(problemRepository.findById("p1")).thenReturn(Optional.of(problem));
+        when(executionService.execute(any(), eq(2000L)))
+                .thenReturn(new ExecutionResponse(ExecutionStatus.ERROR, "", "failed to run docker: boom", -1, 50));
+
+        JudgeResult result = judgeService.judge("p1", Language.PYTHON, "code");
+
+        assertThat(result.verdict()).isEqualTo(Verdict.ERROR);
+        assertThat(result.errorOutput()).isEqualTo("failed to run docker: boom");
+    }
+
+    @Test
+    void wa_errorOutputIsNullAndStdoutNeverLeaks() {
+        TestCase tc = new TestCase("in", "expected", true);
+        Problem problem = new Problem("p1", "title", "desc", 2000, List.of(tc));
+        when(problemRepository.findById("p1")).thenReturn(Optional.of(problem));
+        when(executionService.execute(any(), eq(2000L)))
+                .thenReturn(new ExecutionResponse(ExecutionStatus.SUCCESS, "wrong-output", "", 0, 50));
+
+        JudgeResult result = judgeService.judge("p1", Language.PYTHON, "code");
+
+        assertThat(result.verdict()).isEqualTo(Verdict.WA);
+        assertThat(result.errorOutput()).isNull();
+    }
+
+    @Test
+    void timeoutOnSampleCase_errorOutputIsNull() {
+        TestCase tc = new TestCase("in", "out", true);
+        Problem problem = new Problem("p1", "title", "desc", 2000, List.of(tc));
+        when(problemRepository.findById("p1")).thenReturn(Optional.of(problem));
+        when(executionService.execute(any(), eq(2000L)))
+                .thenReturn(new ExecutionResponse(ExecutionStatus.TIMEOUT, "", "", -1, 2000));
+
+        JudgeResult result = judgeService.judge("p1", Language.PYTHON, "code");
+
+        assertThat(result.verdict()).isEqualTo(Verdict.TLE);
+        assertThat(result.errorOutput()).isNull();
+    }
+
+    @Test
+    void errorOutputExceedingLimit_isTruncated() {
+        TestCase tc = new TestCase("in", "out", true);
+        Problem problem = new Problem("p1", "title", "desc", 2000, List.of(tc));
+        when(problemRepository.findById("p1")).thenReturn(Optional.of(problem));
+        String longStderr = "x".repeat(JudgeService.MAX_ERROR_OUTPUT_LENGTH + 1000);
+        when(executionService.execute(any(), eq(2000L)))
+                .thenReturn(new ExecutionResponse(ExecutionStatus.RUNTIME_ERROR, "", longStderr, 1, 50));
+
+        JudgeResult result = judgeService.judge("p1", Language.PYTHON, "code");
+
+        assertThat(result.errorOutput()).hasSizeLessThan(longStderr.length());
+        assertThat(result.errorOutput()).contains("truncated");
+    }
+
+    @Test
     void unknownProblemId_throwsProblemNotFoundException() {
         when(problemRepository.findById("nope")).thenReturn(Optional.empty());
 

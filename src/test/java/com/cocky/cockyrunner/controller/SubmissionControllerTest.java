@@ -37,7 +37,7 @@ class SubmissionControllerTest {
     @Test
     void acVerdict_returns200() throws Exception {
         when(judgeService.judge(eq("a-plus-b"), eq(Language.PYTHON), any()))
-                .thenReturn(new JudgeResult(Verdict.AC, 3, 3, null, 412));
+                .thenReturn(new JudgeResult(Verdict.AC, 3, 3, null, 412, null));
 
         mockMvc.perform(post("/api/v1/problems/a-plus-b/submissions")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -47,32 +47,47 @@ class SubmissionControllerTest {
                 .andExpect(jsonPath("$.passedCount").value(3))
                 .andExpect(jsonPath("$.totalCount").value(3))
                 .andExpect(jsonPath("$.failedCaseNumber").value(nullValue()))
-                .andExpect(jsonPath("$.maxExecutionTimeMs").value(412));
+                .andExpect(jsonPath("$.maxExecutionTimeMs").value(412))
+                .andExpect(jsonPath("$.errorOutput").value(nullValue()));
     }
 
     @Test
     void waVerdict_returns200WithFailedCaseNumber() throws Exception {
         when(judgeService.judge(eq("a-plus-b"), eq(Language.PYTHON), any()))
-                .thenReturn(new JudgeResult(Verdict.WA, 1, 3, 2, 120));
+                .thenReturn(new JudgeResult(Verdict.WA, 1, 3, 2, 120, null));
 
         mockMvc.perform(post("/api/v1/problems/a-plus-b/submissions")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"language\":\"python\",\"code\":\"print(1)\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.verdict").value("WA"))
-                .andExpect(jsonPath("$.failedCaseNumber").value(2));
+                .andExpect(jsonPath("$.failedCaseNumber").value(2))
+                .andExpect(jsonPath("$.errorOutput").value(nullValue()));
     }
 
     @Test
     void errorVerdict_returns500() throws Exception {
         when(judgeService.judge(eq("a-plus-b"), eq(Language.PYTHON), any()))
-                .thenReturn(new JudgeResult(Verdict.ERROR, 0, 3, 1, 0));
+                .thenReturn(new JudgeResult(Verdict.ERROR, 0, 3, 1, 0, null));
 
         mockMvc.perform(post("/api/v1/problems/a-plus-b/submissions")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"language\":\"python\",\"code\":\"print(1)\"}"))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.verdict").value("ERROR"));
+    }
+
+    @Test
+    void reVerdictOnSampleCase_returns200WithErrorOutput() throws Exception {
+        when(judgeService.judge(eq("a-plus-b"), eq(Language.PYTHON), any()))
+                .thenReturn(new JudgeResult(Verdict.RE, 0, 3, 1, 50, "Traceback...\nValueError: invalid literal"));
+
+        mockMvc.perform(post("/api/v1/problems/a-plus-b/submissions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"language\":\"python\",\"code\":\"print(1)\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.verdict").value("RE"))
+                .andExpect(jsonPath("$.errorOutput").value("Traceback...\nValueError: invalid literal"));
     }
 
     @Test

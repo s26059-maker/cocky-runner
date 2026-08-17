@@ -39,7 +39,8 @@ public class SubmissionController {
                 result.passedCount(),
                 result.totalCount(),
                 result.failedCaseNumber(),
-                result.maxExecutionTimeMs()
+                result.maxExecutionTimeMs(),
+                result.errorOutput()
         );
 
         HttpStatus httpStatus = result.verdict() == Verdict.ERROR

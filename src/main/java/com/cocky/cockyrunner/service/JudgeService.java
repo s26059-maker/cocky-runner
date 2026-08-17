@@ -19,6 +19,15 @@ import java.util.List;
 @Service
 public class JudgeService {
 
+    /**
+     * Cap on the number of characters (String.length(), i.e. UTF-16 code units) of
+     * error output returned to the client - not a UTF-8 byte count. Truncation is
+     * character-based rather than byte-exact since splitting on a byte boundary could
+     * cut a multi-byte character (e.g. Korean) in half.
+     */
+    static final int MAX_ERROR_OUTPUT_LENGTH = 4000;
+    private static final String TRUNCATION_SUFFIX = "\n... (truncated)";
+
     private final ProblemRepository problemRepository;
     private final ExecutionService executionService;
     private final OutputComparator outputComparator = new OutputComparator();
@@ -45,12 +54,13 @@ public class JudgeService {
 
             Verdict caseVerdict = judgeCase(testCase, response);
             if (caseVerdict != Verdict.AC) {
-                return new JudgeResult(caseVerdict, passedCount, testCases.size(), i + 1, maxExecutionTimeMs);
+                String errorOutput = extractErrorOutput(caseVerdict, testCase, response);
+                return new JudgeResult(caseVerdict, passedCount, testCases.size(), i + 1, maxExecutionTimeMs, errorOutput);
             }
             passedCount++;
         }
 
-        return new JudgeResult(Verdict.AC, passedCount, testCases.size(), null, maxExecutionTimeMs);
+        return new JudgeResult(Verdict.AC, passedCount, testCases.size(), null, maxExecutionTimeMs, null);
     }
 
     private Verdict judgeCase(TestCase testCase, ExecutionResponse response) {
@@ -62,5 +72,29 @@ public class JudgeService {
                     ? Verdict.AC
                     : Verdict.WA;
         };
+    }
+
+    /**
+     * The sole gate on exposing stderr: only a sample-case RE/ERROR passes.
+     */
+    private String extractErrorOutput(Verdict verdict, TestCase testCase, ExecutionResponse response) {
+        if (!testCase.sample()) {
+            return null;
+        }
+        if (verdict != Verdict.RE && verdict != Verdict.ERROR) {
+            return null;
+        }
+        String stderr = response.stderr();
+        if (stderr == null || stderr.isBlank()) {
+            return null;
+        }
+        return truncate(stderr);
+    }
+
+    private String truncate(String text) {
+        if (text.length() <= MAX_ERROR_OUTPUT_LENGTH) {
+            return text;
+        }
+        return text.substring(0, MAX_ERROR_OUTPUT_LENGTH) + TRUNCATION_SUFFIX;
     }
 }
