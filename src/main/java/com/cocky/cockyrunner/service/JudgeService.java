@@ -20,10 +20,10 @@ import java.util.List;
 public class JudgeService {
 
     /**
-     * Cap on the error output returned to the client, in UTF-16 characters. Kept well
-     * under 4KB of UTF-8 bytes for typical (mostly-ASCII) stack traces; truncation is
-     * length-based rather than byte-exact since splitting on a byte boundary could cut
-     * a multi-byte character in half.
+     * Cap on the number of characters (String.length(), i.e. UTF-16 code units) of
+     * error output returned to the client - not a UTF-8 byte count. Truncation is
+     * character-based rather than byte-exact since splitting on a byte boundary could
+     * cut a multi-byte character (e.g. Korean) in half.
      */
     static final int MAX_ERROR_OUTPUT_LENGTH = 4000;
     private static final String TRUNCATION_SUFFIX = "\n... (truncated)";
@@ -75,9 +75,7 @@ public class JudgeService {
     }
 
     /**
-     * Only ever returns non-null for RE/ERROR failures on a public sample case - never
-     * for WA/TLE, and never for a hidden case, so neither hidden expected output nor
-     * the program's stdout can leak through this path.
+     * The sole gate on exposing stderr: only a sample-case RE/ERROR passes.
      */
     private String extractErrorOutput(Verdict verdict, TestCase testCase, ExecutionResponse response) {
         if (!testCase.sample()) {
