@@ -24,19 +24,15 @@ function ProblemListPage() {
   }
 
   return (
-    <div className="problem-table" role="table" aria-label="문제 목록">
-      <div className="problem-table__header" role="row">
-        <span role="columnheader">ID</span>
-        <span role="columnheader">제목</span>
+    <div className="problem-table" aria-label="문제 목록">
+      <div className="problem-table__header">
+        <span>ID</span>
+        <span>제목</span>
       </div>
       {problems.map((problem) => (
-        <Link key={problem.id} to={`/problems/${problem.id}`} className="problem-row" role="row">
-          <span className="problem-row__id" role="cell">
-            {problem.id}
-          </span>
-          <span className="problem-row__title" role="cell">
-            {problem.title}
-          </span>
+        <Link key={problem.id} to={`/problems/${problem.id}`} className="problem-row">
+          <span className="problem-row__id">{problem.id}</span>
+          <span className="problem-row__title">{problem.title}</span>
         </Link>
       ))}
     </div>
