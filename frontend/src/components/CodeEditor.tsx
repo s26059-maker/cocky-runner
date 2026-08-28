@@ -1,5 +1,8 @@
 import CodeMirror, { EditorView } from '@uiw/react-codemirror'
 import { python } from '@codemirror/lang-python'
+import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
+import { tags as t } from '@lezer/highlight'
+import './CodeEditor.css'
 
 // Mirrors the backend's supported languages (see com.cocky.cockyrunner.domain.Language).
 // Only python is defined server-side today; add entries here (and the matching
@@ -12,33 +15,68 @@ export type SupportedLanguage = keyof typeof LANGUAGE_EXTENSIONS
 
 export const SUPPORTED_LANGUAGES: SupportedLanguage[] = Object.keys(LANGUAGE_EXTENSIONS) as SupportedLanguage[]
 
-// A single theme built from the app's existing design tokens (index.css), so the
-// editor follows the same light/dark switching as the rest of the page without a
-// separate toggle.
-const appTheme = EditorView.theme({
-  '&': {
-    backgroundColor: 'var(--code-bg)',
-    color: 'var(--text-h)',
-    fontSize: '14px',
-    border: '1px solid var(--border)',
-    borderRadius: '6px',
+// Chrome (background, gutters, caret, selection, active line) built entirely
+// from the app's design tokens. Passed alongside theme="none" on <CodeMirror>
+// below so none of @uiw/react-codemirror's bundled default theme/highlighting
+// leaks in underneath this one.
+const editorTheme = EditorView.theme(
+  {
+    '&': {
+      height: '100%',
+      backgroundColor: 'var(--bg-editor)',
+      color: 'var(--text-primary)',
+    },
+    '.cm-content': {
+      fontFamily: 'var(--font-mono)',
+      fontSize: 'var(--text-base)',
+      lineHeight: '1.6',
+      caretColor: 'var(--accent)',
+    },
+    '.cm-cursor, .cm-dropCursor': {
+      borderLeftColor: 'var(--accent)',
+    },
+    '.cm-scroller': {
+      overflow: 'auto',
+    },
+    '&.cm-focused': {
+      outline: 'none',
+    },
+    '.cm-gutters': {
+      backgroundColor: 'var(--bg-editor)',
+      color: 'var(--text-muted)',
+      border: 'none',
+    },
+    '.cm-lineNumbers .cm-activeLineGutter': {
+      backgroundColor: 'transparent',
+      color: 'var(--text-secondary)',
+    },
+    // Deliberately subtle - a barely-there lightening off --bg-editor itself
+    // (not --bg-hover, which is a much bigger jump meant for hover/selection
+    // states elsewhere), not the loud highlight CodeMirror's default theme
+    // uses for the active line.
+    '.cm-activeLine': {
+      backgroundColor: 'var(--bg-editor-active-line)',
+    },
+    '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': {
+      backgroundColor: 'var(--accent-muted) !important',
+    },
   },
-  '.cm-content': {
-    fontFamily: 'var(--mono)',
-    caretColor: 'var(--text-h)',
-  },
-  '.cm-gutters': {
-    backgroundColor: 'var(--code-bg)',
-    color: 'var(--text)',
-    border: 'none',
-  },
-  '.cm-activeLine, .cm-activeLineGutter': {
-    backgroundColor: 'var(--accent-bg)',
-  },
-  '&.cm-focused': {
-    outline: '1px solid var(--accent-border)',
-  },
-})
+  { dark: true },
+)
+
+// Syntax colors - the --syntax-* palette (src/styles/tokens.css), kept
+// separate from --verdict-* so a string literal is never visually confused
+// with a verdict badge elsewhere in the UI. Five categories, as specified:
+// keyword / string / number / comment / function name.
+const syntaxTheme = syntaxHighlighting(
+  HighlightStyle.define([
+    { tag: [t.keyword, t.controlKeyword, t.moduleKeyword, t.operatorKeyword], color: 'var(--syntax-keyword)' },
+    { tag: [t.function(t.variableName), t.function(t.propertyName)], color: 'var(--syntax-function)' },
+    { tag: [t.number, t.bool, t.null], color: 'var(--syntax-number)' },
+    { tag: [t.string, t.special(t.string)], color: 'var(--syntax-string)' },
+    { tag: [t.comment, t.lineComment, t.blockComment], color: 'var(--syntax-comment)', fontStyle: 'italic' },
+  ]),
+)
 
 interface CodeEditorProps {
   value: string
@@ -50,12 +88,13 @@ interface CodeEditorProps {
 function CodeEditor({ value, onChange, language, readOnly = false }: CodeEditorProps) {
   return (
     <CodeMirror
+      className="code-editor"
       value={value}
       onChange={onChange}
-      extensions={[...LANGUAGE_EXTENSIONS[language]]}
-      theme={appTheme}
+      extensions={[...LANGUAGE_EXTENSIONS[language], editorTheme, syntaxTheme]}
+      theme="none"
       readOnly={readOnly}
-      height="360px"
+      height="100%"
       basicSetup={{ tabSize: 4 }}
     />
   )

@@ -1,0 +1,57 @@
+.problem-table {
+  display: flex;
+  flex-direction: column;
+}
+
+.problem-table__header,
+.problem-row {
+  display: grid;
+  /* Only ID and title - the list endpoint (ProblemSummary) doesn't carry
+     timeLimitMs, only the detail endpoint does. Adding a time-limit column
+     here would mean changing that API contract, which is out of scope for
+     this session; see the session report. */
+  grid-template-columns: 160px 1fr;
+  align-items: center;
+  height: 32px;
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.problem-table__header {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.problem-row {
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 120ms;
+}
+
+.problem-row:hover {
+  background: var(--bg-hover);
+}
+
+.problem-row:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.problem-row__id {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.problem-row__title {
+  overflow: hidden;
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

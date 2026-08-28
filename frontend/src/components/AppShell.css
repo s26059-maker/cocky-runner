@@ -89,7 +89,14 @@
 
 .app-shell__main {
   grid-area: main;
-  overflow-y: auto;
+  /* Grid items default to min-width/min-height: auto, which refuses to shrink
+     below the content's intrinsic size (e.g. a fixed-basis two-panel layout or
+     CodeMirror's own width) - that's what pushed this area past the viewport
+     before. Forcing both to 0 hands sizing entirely to the 1fr track, and
+     .page below is the one actual scroll container. */
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   background: var(--bg-base);
 }
 

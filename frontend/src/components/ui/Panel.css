@@ -1,6 +1,8 @@
 .panel {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  min-height: 0;
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
@@ -32,5 +34,8 @@
 }
 
 .panel__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
   padding: var(--space-3);
 }

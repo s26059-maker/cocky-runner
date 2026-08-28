@@ -8,32 +8,6 @@
 
 @import './tokens.css';
 
-/*
- * Back-compat aliases for the pre-design-system variable names still used by
- * App.css (ProblemListPage/ProblemDetailPage/SubmissionResult styling). Those
- * pages are being migrated to the ui/ components and design tokens in a
- * future session, not this one - until then this keeps them rendering with
- * the new dark palette instead of unstyled/black-on-black, without
- * duplicating literal color values anywhere. Remove this block once App.css
- * is gone.
- */
-:root {
-  --text: var(--text-secondary);
-  --text-h: var(--text-primary);
-  --bg: var(--bg-base);
-  --border: var(--border-subtle);
-  --code-bg: var(--bg-editor);
-  --accent-bg: var(--accent-muted);
-  --accent-border: var(--accent);
-  --success: var(--verdict-ac);
-  --success-bg: var(--verdict-ac-bg);
-  --success-border: var(--verdict-ac);
-  --danger: var(--verdict-wa);
-  --danger-bg: var(--verdict-wa-bg);
-  --danger-border: var(--verdict-wa);
-  --mono: var(--font-mono);
-}
-
 *,
 *::before,
 *::after {
@@ -91,31 +65,12 @@ pre {
   background: var(--text-muted);
 }
 
-/*
- * Carried over from the pre-design-system index.css because
- * ProblemDetailPage still relies on it directly (h1 for the problem title,
- * h2 for each sample block, p for loading/error text) - not part of this
- * session's scope, so left as-is rather than retuned to the new type scale.
- */
+/* Every heading in the app now sets its own size/weight/color explicitly via
+   a page-specific class (see e.g. ProblemDetailPage.css), so h1/h2 carry no
+   global size here - only the margin reset, so an unstyled h1/h2 doesn't
+   silently fall back to the browser's oversized UA default. */
 h1,
-h2 {
-  font-weight: 500;
-  color: var(--text-h);
-}
-
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-}
-
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-}
-
+h2,
 p {
   margin: 0;
 }
