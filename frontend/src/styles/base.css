@@ -1,0 +1,121 @@
+/* JetBrains Mono / Inter, self-hosted via @fontsource - only the weights this
+   design actually uses, so we're not shipping a full family per font. */
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/500.css';
+
+@import './tokens.css';
+
+/*
+ * Back-compat aliases for the pre-design-system variable names still used by
+ * App.css (ProblemListPage/ProblemDetailPage/SubmissionResult styling). Those
+ * pages are being migrated to the ui/ components and design tokens in a
+ * future session, not this one - until then this keeps them rendering with
+ * the new dark palette instead of unstyled/black-on-black, without
+ * duplicating literal color values anywhere. Remove this block once App.css
+ * is gone.
+ */
+:root {
+  --text: var(--text-secondary);
+  --text-h: var(--text-primary);
+  --bg: var(--bg-base);
+  --border: var(--border-subtle);
+  --code-bg: var(--bg-editor);
+  --accent-bg: var(--accent-muted);
+  --accent-border: var(--accent);
+  --success: var(--verdict-ac);
+  --success-bg: var(--verdict-ac-bg);
+  --success-border: var(--verdict-ac);
+  --danger: var(--verdict-wa);
+  --danger-bg: var(--verdict-wa-bg);
+  --danger-border: var(--verdict-wa);
+  --mono: var(--font-mono);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  /* The app shell owns scrolling internally (its main content region only) -
+     the page itself never scrolls. */
+  overflow: hidden;
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  line-height: 1.5;
+  color: var(--text-primary);
+  background: var(--bg-base);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code,
+pre {
+  font-family: var(--font-mono);
+}
+
+/* Custom scrollbar, everywhere. Square corners, transparent track. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 0;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/*
+ * Carried over from the pre-design-system index.css because
+ * ProblemDetailPage still relies on it directly (h1 for the problem title,
+ * h2 for each sample block, p for loading/error text) - not part of this
+ * session's scope, so left as-is rather than retuned to the new type scale.
+ */
+h1,
+h2 {
+  font-weight: 500;
+  color: var(--text-h);
+}
+
+h1 {
+  font-size: 56px;
+  letter-spacing: -1.68px;
+  margin: 32px 0;
+}
+
+h2 {
+  font-size: 24px;
+  line-height: 118%;
+  letter-spacing: -0.24px;
+  margin: 0 0 8px;
+}
+
+p {
+  margin: 0;
+}
