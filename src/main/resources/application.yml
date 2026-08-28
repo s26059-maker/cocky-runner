@@ -18,3 +18,5 @@ runner:
     images:
       c: gcc:14
       python: python:3.11-slim
+server:
+  port: 18080
