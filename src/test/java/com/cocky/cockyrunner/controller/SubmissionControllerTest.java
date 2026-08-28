@@ -101,10 +101,32 @@ class SubmissionControllerTest {
     }
 
     @Test
+    void oversizedCode_returns400WithoutCallingJudgeService() throws Exception {
+        String oversizedCode = "\"" + "a".repeat(70_000) + "\"";
+
+        mockMvc.perform(post("/api/v1/problems/a-plus-b/submissions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"language\":\"python\",\"code\":" + oversizedCode + "}"))
+                .andExpect(status().isBadRequest());
+
+        verify(judgeService, never()).judge(any(), any(), any());
+    }
+
+    @Test
     void unsupportedLanguage_returns400WithoutCallingJudgeService() throws Exception {
         mockMvc.perform(post("/api/v1/problems/a-plus-b/submissions")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"language\":\"ruby\",\"code\":\"print(1)\"}"))
+                .andExpect(status().isBadRequest());
+
+        verify(judgeService, never()).judge(any(), any(), any());
+    }
+
+    @Test
+    void missingLanguage_returns400WithoutCallingJudgeService() throws Exception {
+        mockMvc.perform(post("/api/v1/problems/a-plus-b/submissions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"code\":\"print(1)\"}"))
                 .andExpect(status().isBadRequest());
 
         verify(judgeService, never()).judge(any(), any(), any());

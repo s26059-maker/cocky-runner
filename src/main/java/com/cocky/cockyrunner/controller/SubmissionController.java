@@ -7,6 +7,7 @@ import com.cocky.cockyrunner.dto.SubmissionRequest;
 import com.cocky.cockyrunner.dto.SubmissionResponse;
 import com.cocky.cockyrunner.exception.InvalidExecutionRequestException;
 import com.cocky.cockyrunner.service.JudgeService;
+import com.cocky.cockyrunner.util.SourceCodeLimits;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -30,6 +31,7 @@ public class SubmissionController {
         if (request.code() == null || request.code().isBlank()) {
             throw new InvalidExecutionRequestException("code must not be blank");
         }
+        SourceCodeLimits.validateLength(request.code());
         Language language = parseLanguage(request.language());
 
         JudgeResult result = judgeService.judge(id, language, request.code());

@@ -1,24 +1,15 @@
 package com.cocky.cockyrunner.domain;
 
-import java.util.List;
-
+/**
+ * A language a submission can be judged in. This is a bare identity - all the
+ * docker/compile/run configuration for a language lives in {@link LanguageSpec},
+ * looked up via {@link com.cocky.cockyrunner.config.LanguageSpecRegistry}. Adding
+ * a new language (e.g. JAVA) means adding a value here <em>and</em> a matching
+ * {@code case} to the switch in {@code LanguageSpecRegistry.buildSpec()} - the
+ * switch is exhaustive over this enum, so the compiler refuses to build until
+ * the second step is done too; you can't add one without the other.
+ */
 public enum Language {
-
-    PYTHON("main.py", List.of("python", "/app/main.py"));
-
-    private final String fileName;
-    private final List<String> runCommand;
-
-    Language(String fileName, List<String> runCommand) {
-        this.fileName = fileName;
-        this.runCommand = runCommand;
-    }
-
-    public String fileName() {
-        return fileName;
-    }
-
-    public List<String> runCommand() {
-        return runCommand;
-    }
+    C,
+    PYTHON
 }

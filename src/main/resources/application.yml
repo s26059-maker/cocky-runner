@@ -14,5 +14,7 @@ runner:
     cpus: 1.0
     pids-limit: 64
     max-output-bytes: 65536
+    work-dir: build/judge-work
     images:
+      c: gcc:14
       python: python:3.11-slim
