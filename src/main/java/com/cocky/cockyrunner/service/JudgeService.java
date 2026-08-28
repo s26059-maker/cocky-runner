@@ -106,7 +106,7 @@ public class JudgeService {
      */
     private long resolveTimeoutMs(Problem problem, Language language) {
         LanguageSpec spec = languageSpecRegistry.get(language);
-        long timeoutMs = Math.round(problem.timeLimitMs() * spec.timeLimitMultiplier());
+        long timeoutMs = spec.resolvedTimeoutMs(problem.timeLimitMs());
         log.info("resolved run timeout for problem {} language {}: {}ms (base {}ms x multiplier {})",
                 problem.id(), language, timeoutMs, problem.timeLimitMs(), spec.timeLimitMultiplier());
         return timeoutMs;

@@ -8,6 +8,14 @@ import com.cocky.cockyrunner.exception.InvalidExecutionRequestException;
  * submission is rejected as a normal 400 rather than failing deeper in the
  * pipeline (or worse, succeeding but wasting a compile/run cycle on something
  * that was never going to be accepted).
+ *
+ * <p>The limit is a character count ({@code String.length()}, i.e. UTF-16 code
+ * units) - not a UTF-8 byte count, and not a stored/serialized size in bytes.
+ * A single character can be 1-4 UTF-8 bytes, so the same 65536-character
+ * submission can occupy a different number of bytes depending on its content;
+ * this class doesn't bound that. {@link com.cocky.cockyrunner.util.TextTruncator}
+ * uses the same code-unit convention for the same reason, so the two policies
+ * stay consistent with each other.
  */
 public final class SourceCodeLimits {
 

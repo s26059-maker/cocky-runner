@@ -42,7 +42,17 @@ public class DockerRunner {
     /** Fixed timeout for the compile step, independent of any per-test-case run timeout. */
     static final long COMPILE_TIMEOUT_MS = 10_000L;
 
-    /** Upper bound on any run timeout accepted by this runner, caller-supplied or computed. */
+    /**
+     * Upper bound on any run timeout accepted by this runner, caller-supplied or
+     * computed. This is the single owner of that policy - {@link
+     * com.cocky.cockyrunner.service.ExecutionService} references this constant
+     * rather than duplicating it, and {@link
+     * com.cocky.cockyrunner.repository.JsonProblemRepository} checks every
+     * problem/language combination against it at startup (via {@link
+     * com.cocky.cockyrunner.domain.LanguageSpec#resolvedTimeoutMs(int)}) so a
+     * problem whose resolved timeout would exceed it is caught before it can ever
+     * reach {@link #run}, rather than surfacing as a confusing 400 on first submit.
+     */
     public static final long MAX_TIMEOUT_MS = 30_000L;
 
     private final DockerProperties properties;
@@ -92,7 +102,7 @@ public class DockerRunner {
         }
 
         if (spec.needsCompile()) {
-            CompileOutcome outcome = compile(workDir, spec);
+            CompileOutcome outcome = compile(workDir, spec, code.length());
             switch (outcome.kind()) {
                 case COMPILE_ERROR -> {
                     return DockerSubmissionExecution.compileFailure(this, workDir, outcome.message());
@@ -172,8 +182,11 @@ public class DockerRunner {
      * Runs the language's compile command against the workspace with the same
      * resource constraints as an execution container, but a fixed timeout that is
      * independent of the problem's/language's run time limit.
+     *
+     * @param sourceLength length of the submitted source in characters, logged (not
+     *                     the source itself) if compilation times out
      */
-    private CompileOutcome compile(Path workDir, LanguageSpec spec) {
+    private CompileOutcome compile(Path workDir, LanguageSpec spec, int sourceLength) {
         String containerName = "compile-" + UUID.randomUUID();
         try {
             List<String> command = buildContainerCommand(containerName, workDir, spec.dockerImage(), spec.compileCommand(), false);
@@ -192,6 +205,14 @@ public class DockerRunner {
                 killContainer(containerName);
                 stdoutThread.join(TimeUnit.SECONDS.toMillis(5));
                 stderrThread.join(TimeUnit.SECONDS.toMillis(5));
+                // warn, not info: a compile that doesn't finish in COMPILE_TIMEOUT_MS is
+                // usually the user's code (e.g. a template metaprogramming blowup), but it's
+                // also the one compile failure shape that infrastructure trouble (an
+                // overloaded host, a stuck container) could produce, so it's worth being able
+                // to spot a spike of these separately from ordinary nonzero-exit failures.
+                // Source length only, never the source itself.
+                log.warn("compilation timed out after {}ms for {} (source length {} chars)",
+                        COMPILE_TIMEOUT_MS, spec.sourceFileName(), sourceLength);
                 return CompileOutcome.compileError("compilation timed out after " + COMPILE_TIMEOUT_MS + "ms");
             }
 

@@ -66,20 +66,24 @@ class ExecutionServiceTest {
 
     @Test
     void usesCallerSuppliedTimeoutAtUpperBound() {
+        // The bound is DockerRunner.MAX_TIMEOUT_MS, not a hardcoded literal here - if
+        // ExecutionService's validateTimeout() ever stops referencing that constant
+        // (e.g. a hardcoded duplicate creeps back in with a different value), this
+        // test breaks even though nothing here changed.
         ExecutionRequest request = new ExecutionRequest("python", "print(1)", "");
         SubmissionExecution execution = readyExecution();
         when(dockerRunner.prepareSubmission(eq(languageSpecRegistry.get(Language.PYTHON)), eq("print(1)")))
                 .thenReturn(execution);
         ExecutionResponse expected = new ExecutionResponse(ExecutionStatus.SUCCESS, "1\n", "", 0, 10);
-        when(execution.run("", 30_000L)).thenReturn(expected);
+        when(execution.run("", DockerRunner.MAX_TIMEOUT_MS)).thenReturn(expected);
 
-        ExecutionResponse actual = executionService.execute(request, 30_000L);
+        ExecutionResponse actual = executionService.execute(request, DockerRunner.MAX_TIMEOUT_MS);
 
         assertThat(actual).isEqualTo(expected);
     }
 
     @ParameterizedTest
-    @ValueSource(longs = {0, -1, 30_001, 60_000})
+    @ValueSource(longs = {0, -1, DockerRunner.MAX_TIMEOUT_MS + 1, 60_000})
     void rejectsInvalidTimeout(long timeoutMs) {
         ExecutionRequest request = new ExecutionRequest("python", "print(1)", "");
 

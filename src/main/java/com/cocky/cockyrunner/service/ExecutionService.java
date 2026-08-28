@@ -31,8 +31,6 @@ import org.springframework.stereotype.Service;
 @Service
 public class ExecutionService {
 
-    private static final long MAX_TIMEOUT_MS = 30_000;
-
     private final DockerRunner dockerRunner;
     private final LanguageSpecRegistry languageSpecRegistry;
     private final long defaultTimeoutMs;
@@ -89,8 +87,13 @@ public class ExecutionService {
         if (timeoutMs <= 0) {
             throw new InvalidExecutionRequestException("timeoutMs must be positive: " + timeoutMs);
         }
-        if (timeoutMs > MAX_TIMEOUT_MS) {
-            throw new InvalidExecutionRequestException("timeoutMs must not exceed " + MAX_TIMEOUT_MS + ": " + timeoutMs);
+        // DockerRunner is the policy owner for this upper bound (it's the actual
+        // infrastructure constraint) - referenced here rather than duplicated so the
+        // two can never drift apart. DockerRunner.run() re-validates independently,
+        // so this check is a fast-fail rather than the only line of defense.
+        if (timeoutMs > DockerRunner.MAX_TIMEOUT_MS) {
+            throw new InvalidExecutionRequestException(
+                    "timeoutMs must not exceed " + DockerRunner.MAX_TIMEOUT_MS + ": " + timeoutMs);
         }
     }
 
