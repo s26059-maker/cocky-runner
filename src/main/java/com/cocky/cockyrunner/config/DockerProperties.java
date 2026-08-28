@@ -10,6 +10,7 @@ public record DockerProperties(
         String memory,
         double cpus,
         int pidsLimit,
-        int maxOutputBytes
+        int maxOutputBytes,
+        String workDir
 ) {
 }
