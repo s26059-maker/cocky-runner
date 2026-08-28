@@ -55,3 +55,12 @@
 .btn--ghost:hover:not(:disabled) {
   background: var(--bg-hover);
 }
+
+/* Matches Select's own 24px row exactly (height/padding/font-size), so a
+   ghost Button can sit next to a Select in a 24px Panel header without
+   looking mismatched. */
+.btn--sm {
+  height: var(--space-6);
+  padding: 0 var(--space-2);
+  font-size: var(--text-xs);
+}

@@ -1,29 +1,51 @@
-import { useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
+import type { ChangeEvent } from 'react'
 import { Link, useParams } from 'react-router'
 import { getProblem } from '../api/problems'
 import { submitSolution } from '../api/submissions'
 import { ApiError, toErrorMessage } from '../api/client'
 import { useAsyncData } from '../hooks/useAsyncData'
-import CodeEditor, { SUPPORTED_LANGUAGES, type SupportedLanguage } from '../components/CodeEditor'
+import { useProblemDraft } from '../hooks/useProblemDraft'
+import CodeEditor, {
+  LANGUAGE_TEMPLATES,
+  SUPPORTED_LANGUAGES,
+  type SupportedLanguage,
+} from '../components/CodeEditor'
 import SubmissionResult from '../components/SubmissionResult'
 import Panel from '../components/ui/Panel'
 import Button from '../components/ui/Button'
 import Select from '../components/ui/Select'
-import type { SubmissionResponse } from '../types'
+import { MAX_SOURCE_LENGTH, type SubmissionResponse } from '../types'
 import './ProblemDetailPage.css'
+
+const LANGUAGE_LABELS: Record<SupportedLanguage, string> = {
+  C: 'C',
+  PYTHON: 'Python',
+}
+
+const IS_MAC = /Mac|iPhone|iPad|iPod/.test(navigator.userAgent)
+const SUBMIT_SHORTCUT_LABEL = IS_MAC ? '⌘Enter' : 'Ctrl+Enter'
 
 function ProblemDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { data: problem, error, loading } = useAsyncData(() => getProblem(id!), [id])
 
-  const [language, setLanguage] = useState<SupportedLanguage>(SUPPORTED_LANGUAGES[0])
-  const [code, setCode] = useState('')
+  const { language, setLanguage, code, setCode } = useProblemDraft(
+    id,
+    SUPPORTED_LANGUAGES,
+    SUPPORTED_LANGUAGES[0],
+    LANGUAGE_TEMPLATES,
+  )
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<SubmissionResponse | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
+  const isBlank = !code.trim()
+  const isTooLong = code.length > MAX_SOURCE_LENGTH
+  const canSubmit = !isBlank && !isTooLong && !submitting
+
   async function handleSubmit() {
-    if (!id || !code.trim() || submitting) {
+    if (!id || !canSubmit) {
       return
     }
 
@@ -39,6 +61,31 @@ function ProblemDetailPage() {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  // CodeEditor memoizes its CodeMirror extensions on [language, onSubmit], so
+  // onSubmit needs a stable identity - handleSubmit itself isn't stable (it
+  // closes over code/submitting, which change on every keystroke). This ref
+  // always points at the latest handleSubmit; the wrapper passed down never
+  // changes identity but always calls the current one.
+  const handleSubmitRef = useRef(handleSubmit)
+  handleSubmitRef.current = handleSubmit
+  const handleSubmitViaShortcut = useCallback(() => {
+    handleSubmitRef.current()
+  }, [])
+
+  function handleLanguageChange(e: ChangeEvent<HTMLSelectElement>) {
+    const newLanguage = e.target.value as SupportedLanguage
+    setLanguage(newLanguage)
+    // Never overwrite code the user already wrote - only fill in the new
+    // language's template if the editor is currently empty.
+    if (!code.trim()) {
+      setCode(LANGUAGE_TEMPLATES[newLanguage])
+    }
+  }
+
+  function handleReset() {
+    setCode(LANGUAGE_TEMPLATES[language])
   }
 
   if (loading) {
@@ -100,27 +147,46 @@ function ProblemDetailPage() {
           className="problem-detail__panel"
           title="SOLUTION"
           headerRight={
-            <Select
-              aria-label="언어"
-              value={language}
-              onChange={(e) => setLanguage(e.target.value as SupportedLanguage)}
-              disabled={submitting}
-            >
-              {SUPPORTED_LANGUAGES.map((lang) => (
-                <option key={lang} value={lang}>
-                  {lang}
-                </option>
-              ))}
-            </Select>
+            <>
+              <Button variant="ghost" size="sm" onClick={handleReset} disabled={submitting}>
+                Reset
+              </Button>
+              <Select
+                aria-label="언어"
+                value={language}
+                onChange={handleLanguageChange}
+                disabled={submitting}
+              >
+                {SUPPORTED_LANGUAGES.map((lang) => (
+                  <option key={lang} value={lang}>
+                    {LANGUAGE_LABELS[lang]}
+                  </option>
+                ))}
+              </Select>
+            </>
           }
         >
           <div className="solution-panel">
             <div className="solution-panel__editor">
-              <CodeEditor value={code} onChange={setCode} language={language} readOnly={submitting} />
+              <CodeEditor
+                value={code}
+                onChange={setCode}
+                language={language}
+                readOnly={submitting}
+                onSubmit={handleSubmitViaShortcut}
+              />
             </div>
 
+            {isTooLong && (
+              <p className="solution-panel__validation-error">
+                코드가 최대 길이 {MAX_SOURCE_LENGTH.toLocaleString()}자를 초과했습니다 (현재{' '}
+                {code.length.toLocaleString()}자).
+              </p>
+            )}
+
             <div className="solution-panel__actions">
-              <Button onClick={handleSubmit} disabled={!code.trim() || submitting}>
+              <span className="solution-panel__shortcut-hint">{SUBMIT_SHORTCUT_LABEL}</span>
+              <Button onClick={handleSubmit} disabled={!canSubmit} title={`${SUBMIT_SHORTCUT_LABEL}로도 제출할 수 있습니다`}>
                 {submitting ? '채점 중...' : '제출'}
               </Button>
             </div>

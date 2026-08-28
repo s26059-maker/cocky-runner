@@ -107,8 +107,23 @@
   border-radius: var(--radius-sm);
 }
 
+.solution-panel__validation-error {
+  margin: 0;
+  flex: none;
+  color: var(--verdict-wa);
+  font-size: var(--text-xs);
+}
+
 .solution-panel__actions {
   display: flex;
-  flex: none;
+  align-items: center;
   justify-content: flex-end;
+  gap: var(--space-3);
+  flex: none;
+}
+
+.solution-panel__shortcut-hint {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
 }

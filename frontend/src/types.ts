@@ -1,5 +1,12 @@
 // 1:1 mirrors of the backend DTOs (see com.cocky.cockyrunner.dto / domain on the server).
 
+// Mirrors SourceCodeLimits.MAX_SOURCE_LENGTH on the backend - a client-side
+// check against the same limit (also in UTF-16 code units, i.e. JS string
+// .length, matching String.length() on the server) so an over-limit
+// submission is rejected locally instead of round-tripping to find out.
+// The backend still enforces this independently; this only saves the trip.
+export const MAX_SOURCE_LENGTH = 65536
+
 export interface ProblemSummary {
   id: string
   title: string
