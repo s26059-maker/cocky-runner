@@ -1,0 +1,103 @@
+/*
+ * Design tokens. Single source of truth for color, type, and spacing - every
+ * other stylesheet references these custom properties, never a literal hex
+ * value. Dark is the only theme; there is no light variant and no
+ * prefers-color-scheme branch.
+ */
+:root {
+  /* Backgrounds - each name is one layer up from the last, except --bg-editor,
+     which is deliberately the darkest of all (a sunken "well" below --bg-base)
+     - darkened from the original #1b1b1e, which sat too close to --bg-surface
+     (#26262a) to read as a distinct layer once actually on screen. */
+  --bg-base: #1f1f22;
+  --bg-surface: #26262a;
+  --bg-elevated: #2e2e33;
+  --bg-editor: #16161a;
+  --bg-hover: #34343a;
+  --bg-active: #3c3c44;
+
+  /* The editor's active-line highlight: barely lighter than --bg-editor itself
+     - enough to find the cursor line, not enough to read as a selection. */
+  --bg-editor-active-line: #1c1c20;
+
+  /* Borders */
+  --border-subtle: #303036;
+  --border-strong: #45454d;
+
+  /* Text */
+  --text-primary: #dcdcdd;
+  --text-secondary: #9b9ba3;
+  --text-muted: #6b6b74;
+  --text-inverse: #1f1f22;
+
+  /* Accent - the one non-semantic color used for interactive emphasis.
+     Sidebar active indicator, editor caret, and focus outlines all depend on
+     --accent itself staying exactly this value - don't change it here. */
+  --accent: #7c6cf0;
+  --accent-hover: #8f80f5;
+  --accent-muted: rgba(124, 108, 240, 0.14);
+
+  /* A separate, darker background for filled ("solid") accent surfaces like
+     Button's primary variant - --accent itself is too mid-luminance for
+     *any* foreground color (light or dark) to reach 4.5:1 against it (best
+     case, near-black text on --accent, only manages ~4.1:1). Same hue/
+     saturation as --accent, just darker, so --text-primary on top clears
+     WCAG AA: --accent-solid vs --text-primary = 4.75:1,
+     --accent-solid-hover vs --text-primary = 5.99:1 (hover goes darker, not
+     lighter, specifically to keep - not spend - that margin). */
+  --accent-solid: #523deb;
+  --accent-solid-hover: #3921e8;
+
+  /* Verdict semantics */
+  --verdict-ac: #6fbf73;
+  --verdict-wa: #e05561;
+  --verdict-tle: #d99e4a;
+  --verdict-re: #c678dd;
+  --verdict-ce: #e0854a;
+  --verdict-pending: #6b6b74;
+
+  --verdict-ac-bg: rgba(111, 191, 115, 0.12);
+  --verdict-wa-bg: rgba(224, 85, 97, 0.12);
+  --verdict-tle-bg: rgba(217, 158, 74, 0.12);
+  --verdict-re-bg: rgba(198, 120, 221, 0.12);
+  --verdict-ce-bg: rgba(224, 133, 74, 0.12);
+  --verdict-pending-bg: rgba(107, 107, 116, 0.12);
+
+  /* Type */
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+  --font-ui: 'Inter', -apple-system, 'Segoe UI', sans-serif;
+
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13px;
+  --text-lg: 15px;
+  --text-xl: 18px;
+
+  /* Spacing - 4px increments. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+
+  /* Not in the original spec, added for consistency: the two radii the design
+     direction allows ("최대 4px, 대부분 2px 또는 0"), named so components never
+     write a bare px value for corner rounding. */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+
+  /* Syntax highlighting (CodeMirror). A palette of its own, deliberately kept
+     out of every verdict/accent hue used above (green, red, orange (x2),
+     purple, blue-violet) so a string literal in the editor never reads as a
+     pass/fail signal borrowed from elsewhere in the UI. */
+  --syntax-keyword: #5b8fd1;
+  --syntax-function: #4fadc4;
+  --syntax-number: #4bb8a6;
+  --syntax-string: #d0bb55;
+  --syntax-comment: #7a828e;
+
+  color-scheme: dark;
+}

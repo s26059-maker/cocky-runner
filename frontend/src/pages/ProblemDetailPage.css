@@ -1,0 +1,114 @@
+.problem-detail {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  gap: var(--space-4);
+}
+
+.problem-detail__back {
+  flex: none;
+  align-self: flex-start;
+}
+
+.problem-detail-layout {
+  display: grid;
+  /* Left 40% / right 60%, per spec. */
+  grid-template-columns: 2fr 3fr;
+  gap: var(--space-4);
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.problem-detail__panel {
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.problem-detail__title {
+  margin: 0 0 var(--space-1);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.problem-detail__meta {
+  margin: 0 0 var(--space-4);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.problem-detail__description {
+  margin: 0 0 var(--space-5);
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.sample {
+  margin-bottom: var(--space-5);
+}
+
+.sample__title {
+  margin: 0 0 var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.sample-io {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.sample-io > div {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.sample-io__label {
+  margin: 0 0 var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+
+.sample-io__block {
+  margin: 0;
+  padding: var(--space-2);
+  background: var(--bg-editor);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.solution-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  gap: var(--space-3);
+}
+
+.solution-panel__editor {
+  flex: 1 1 auto;
+  min-height: 160px;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.solution-panel__actions {
+  display: flex;
+  flex: none;
+  justify-content: flex-end;
+}

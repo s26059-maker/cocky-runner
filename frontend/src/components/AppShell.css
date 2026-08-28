@@ -1,0 +1,114 @@
+.app-shell {
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  grid-template-rows: 36px 1fr 24px;
+  grid-template-areas:
+    'topbar topbar'
+    'sidebar main'
+    'statusbar statusbar';
+  height: 100vh;
+  background: var(--bg-base);
+  color: var(--text-primary);
+}
+
+.app-shell__topbar {
+  grid-area: topbar;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-3);
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.app-shell__brand {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+.activity-strip {
+  grid-area: sidebar;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding-top: var(--space-2);
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border-subtle);
+}
+
+.activity-strip__item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 40px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color 120ms,
+    color 120ms;
+}
+
+.activity-strip__item:hover:not(.is-disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.activity-strip__item.is-active {
+  color: var(--text-primary);
+}
+
+.activity-strip__item.is-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  background: var(--accent);
+}
+
+.activity-strip__item.is-disabled {
+  color: var(--text-muted);
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.activity-strip__item:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.app-shell__main {
+  grid-area: main;
+  /* Grid items default to min-width/min-height: auto, which refuses to shrink
+     below the content's intrinsic size (e.g. a fixed-basis two-panel layout or
+     CodeMirror's own width) - that's what pushed this area past the viewport
+     before. Forcing both to 0 hands sizing entirely to the 1fr track, and
+     .page below is the one actual scroll container. */
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg-base);
+}
+
+.app-shell__statusbar {
+  grid-area: statusbar;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-3);
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+}

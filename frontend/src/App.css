@@ -1,198 +1,24 @@
+/*
+ * Page chrome shared by every route: the padded/scrollable content region
+ * AppShell's <main> wraps around <Routes>, plus a couple of small utility
+ * classes (loading/error text, an empty-state layout) reused by more than one
+ * page. Anything specific to a single page lives in that page's own .css file.
+ */
 .page {
-  padding: 24px 32px 48px;
-  text-align: left;
-}
-
-.page a {
-  color: var(--accent);
-  text-decoration: none;
-}
-
-.page a:hover {
-  text-decoration: underline;
-}
-
-.page h1 {
-  text-align: left;
-  font-size: 32px;
-  margin: 0 0 24px;
-}
-
-.page h1 a {
-  color: var(--text-h);
-}
-
-.problem-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.problem-list a {
-  font-size: 18px;
-}
-
-.problem-detail .description {
-  white-space: pre-wrap;
-  margin: 16px 0 24px;
-}
-
-.sample {
-  margin-top: 24px;
-}
-
-.sample-io {
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.sample-io > div {
-  flex: 1 1 240px;
-}
-
-.sample-io h3 {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text);
-  margin: 0 0 4px;
-}
-
-pre {
-  background: var(--code-bg);
-  border-radius: 6px;
-  padding: 12px;
-  margin: 0;
-  overflow-x: auto;
-  font-family: var(--mono);
-  font-size: 14px;
-}
-
-.problem-detail-layout {
-  display: flex;
-  align-items: flex-start;
-  gap: 32px;
-  margin-top: 24px;
-}
-
-.problem-statement,
-.submit-panel {
-  flex: 1 1 420px;
-  min-width: 0;
-}
-
-@media (max-width: 900px) {
-  .problem-detail-layout {
-    flex-direction: column;
-  }
-}
-
-.submit-panel h2 {
-  margin-top: 0;
-}
-
-.submit-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.submit-row label {
-  font-size: 14px;
-  color: var(--text);
-}
-
-.submit-row select {
-  font: inherit;
-  padding: 6px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text-h);
-}
-
-.code-editor {
-  margin-bottom: 12px;
-}
-
-.submit-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.submit-actions button {
-  font: inherit;
-  font-size: 15px;
-  padding: 10px 24px;
-  border-radius: 6px;
-  border: 1px solid var(--accent-border);
-  background: var(--accent);
-  color: #fff;
-  cursor: pointer;
-}
-
-.submit-actions button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.submission-result {
-  margin-top: 20px;
-  padding: 16px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-}
-
-.submission-result--success {
-  background: var(--success-bg);
-  border-color: var(--success-border);
-}
-
-.submission-result--danger {
-  background: var(--danger-bg);
-  border-color: var(--danger-border);
-}
-
-.submission-verdict {
-  font-size: 20px;
-  font-weight: 600;
-  margin: 0 0 8px;
-}
-
-.submission-result--success .submission-verdict {
-  color: var(--success);
-}
-
-.submission-result--danger .submission-verdict {
-  color: var(--danger);
-}
-
-.submission-meta {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 14px;
-  color: var(--text);
-}
-
-.submission-note {
-  margin: 8px 0 0;
-  font-size: 13px;
-  color: var(--text);
-}
-
-.submission-error-output {
-  margin-top: 8px;
-  max-height: 240px;
+  height: 100%;
+  min-height: 0;
+  padding: var(--space-5) var(--space-6);
   overflow-y: auto;
-  overflow-x: auto;
-  white-space: pre;
+}
+
+.page-status {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
 }

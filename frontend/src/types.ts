@@ -18,7 +18,7 @@ export interface ProblemDetail {
   sampleTestCases: TestCasePreview[]
 }
 
-export type Verdict = 'AC' | 'WA' | 'TLE' | 'RE' | 'ERROR'
+export type Verdict = 'AC' | 'WA' | 'TLE' | 'RE' | 'CE' | 'ERROR'
 
 export interface SubmissionRequest {
   language: string
@@ -31,13 +31,14 @@ export interface SubmissionResponse {
   totalCount: number
   failedCaseNumber: number | null
   maxExecutionTimeMs: number
-  // Only ever populated for RE/ERROR on a public sample test case; null otherwise
-  // (hidden-case failures, WA, TLE) - see JudgeResult on the backend. Always present
-  // in the response (never omitted), so this is not optional.
+  // For CE, always populated (a compile error is about the submitted code, not
+  // test data). For RE/ERROR, only on a public sample test case; null otherwise
+  // (hidden-case failures, WA, TLE) - see JudgeResult on the backend. Always
+  // present in the response (never omitted), so this is not optional.
   errorOutput: string | null
 }
 
-export type ExecutionStatus = 'SUCCESS' | 'RUNTIME_ERROR' | 'TIMEOUT' | 'ERROR'
+export type ExecutionStatus = 'SUCCESS' | 'RUNTIME_ERROR' | 'TIMEOUT' | 'COMPILE_ERROR' | 'ERROR'
 
 export interface ExecutionRequest {
   language: string
