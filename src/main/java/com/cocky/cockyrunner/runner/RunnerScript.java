@@ -68,12 +68,14 @@ public final class RunnerScript {
      * every run ({@code : > "$T"}), which already keeps a stale reading from one
      * test case leaking into the next within the same submission; this is for
      * callers that want the workspace clean before that first run even happens.
+     *
+     * <p>Thrown as a checked {@link IOException} rather than wrapped in an
+     * unchecked one - unlike {@link #writeTo}, this runs on every single test
+     * case, inside {@link DockerRunner#run}'s existing try/catch, so a caller
+     * there is expected to handle the failure (translate it into an ERROR
+     * response) rather than let it propagate as an uncaught exception.
      */
-    public static void clearTiming(Path workDir) {
-        try {
-            Files.deleteIfExists(workDir.resolve(TIMING_FILE_NAME));
-        } catch (IOException e) {
-            throw new UncheckedIOException("failed to clear " + TIMING_FILE_NAME + " in " + workDir, e);
-        }
+    public static void clearTiming(Path workDir) throws IOException {
+        Files.deleteIfExists(workDir.resolve(TIMING_FILE_NAME));
     }
 }

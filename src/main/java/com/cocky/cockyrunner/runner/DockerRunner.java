@@ -137,16 +137,25 @@ public class DockerRunner {
      */
     ExecutionResponse run(Path workDir, LanguageSpec spec, String stdin, long timeoutMs) {
         validateTimeout(timeoutMs);
-        // Belt-and-suspenders: the wrapper script itself truncates this file as its
-        // first action, but that only helps if the container starts at all - if
-        // `docker run` itself never launches, a stale file from the previous test
-        // case in this same workspace would otherwise be read as this one's result.
-        RunnerScript.clearTiming(workDir);
-        // nanoTime, not currentTimeMillis: this measures elapsed duration, and the
-        // wall clock can jump (NTP sync) in ways that would corrupt that.
-        long startNanos = System.nanoTime();
         String containerName = "run-" + UUID.randomUUID();
+        // Declared (with a real value) here rather than literally inside the try
+        // below, only because a variable assigned inside a try block isn't visible
+        // from its own catch block, and the catch needs to report *an* elapsed
+        // time even when clearTiming() itself is what throws. nanoTime, not
+        // currentTimeMillis: this measures elapsed duration, and the wall clock
+        // can jump (NTP sync) in ways that would corrupt that.
+        long startNanos = System.nanoTime();
         try {
+            // Belt-and-suspenders: the wrapper script itself truncates this file as
+            // its first action, but that only helps if the container starts at all -
+            // if `docker run` itself never launches, a stale file from the previous
+            // test case in this same workspace would otherwise be read as this
+            // one's result. Inside the try (not before it, and no longer catching
+            // its own IOException) so a failure here - e.g. a workspace file that
+            // became undeletable - is reported as an ERROR response by the catch
+            // below instead of propagating out of run() uncaught.
+            RunnerScript.clearTiming(workDir);
+
             List<String> wrappedCommand = new ArrayList<>();
             wrappedCommand.add("sh");
             wrappedCommand.add(CONTAINER_WORK_DIR + "/" + RunnerScript.FILE_NAME);
@@ -199,7 +208,12 @@ public class DockerRunner {
                     timing.totalWallMs(), timing.userWallMs(), timing.userCpuMs());
 
         } catch (IOException e) {
-            log.error("failed to launch docker process", e);
+            // Covers both a docker process that never launched and clearTiming()
+            // failing to delete a leftover .timing file - either way there's no run
+            // to report on, and elapsedMs(startNanos) here is not meaningful (the
+            // run itself may never have started) so it's not worth distinguishing
+            // further.
+            log.error("failed to prepare workspace or launch docker process", e);
             return ExecutionResponse.withoutTiming(ExecutionStatus.ERROR, "", "failed to run docker: " + e.getMessage(),
                     -1, elapsedMs(startNanos));
         } catch (InterruptedException e) {

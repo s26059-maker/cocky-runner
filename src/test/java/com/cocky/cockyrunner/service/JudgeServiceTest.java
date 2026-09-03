@@ -486,6 +486,31 @@ class JudgeServiceTest {
     }
 
     @Test
+    void aSlowerCaseWithFailedTimingParse_isNotOverwrittenByALaterShorterCase() {
+        // Regression for the hasSnapshot flag: userWallMs == null is also the
+        // normal shape of "this case's timing just didn't parse", not only "no
+        // snapshot taken yet" - a null-check alone would keep re-triggering on
+        // every later case (since the local userWallMs stays null) until a
+        // non-null one showed up, letting case 2's shorter, successfully-parsed
+        // time silently overwrite case 1's genuinely slower one.
+        TestCase tc1 = new TestCase("in1", "out1", true);
+        TestCase tc2 = new TestCase("in2", "out2", false);
+        Problem problem = new Problem("p1", "title", "desc", 2000, List.of(tc1, tc2));
+        when(problemRepository.findById("p1")).thenReturn(Optional.of(problem));
+        SubmissionExecution execution = readyExecution();
+        stubPrepare(execution);
+        when(executionService.execute(eq(execution), anyString(), eq(2000L)))
+                .thenReturn(success("out1", 300))              // slower, but timing parse failed
+                .thenReturn(successWithTiming("out2", 100, 80, 50)); // faster, timing parsed fine
+
+        JudgeResult result = judgeService.judge("p1", Language.C, "code");
+
+        assertThat(result.maxExecutionTimeMs()).isEqualTo(300);
+        assertThat(result.userWallMs()).isNull();
+        assertThat(result.userCpuMs()).isNull();
+    }
+
+    @Test
     void userWallAndCpuMs_nullWhenTimingCouldNotBeDetermined() {
         TestCase tc = new TestCase("in", "out", true);
         Problem problem = new Problem("p1", "title", "desc", 2000, List.of(tc));

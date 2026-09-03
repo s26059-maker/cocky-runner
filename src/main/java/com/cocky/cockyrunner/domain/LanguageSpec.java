@@ -54,6 +54,22 @@ public record LanguageSpec(
      * were the budget added after that check instead, a problem/language
      * combination could pass validation right at the boundary and then still
      * exceed the real ceiling once the budget is folded in.
+     *
+     * <p>On policy: the host enforces {@code timeoutMs} as a single wall-clock
+     * deadline around the whole container run ({@code process.waitFor} in
+     * {@code DockerRunner.run}) - it has no way to separate "time spent starting
+     * the container" from "time spent in the user's program" while the run is in
+     * progress, so the two can't be budgeted independently. Padding the deadline
+     * by a fixed {@code startupBudgetMs} is the only lever available, and it's a
+     * blunt one: if the container happens to start faster than the budget
+     * assumes, the unused slack silently becomes extra time for the user's
+     * program too (a borderline-TLE submission can pass on a lucky fast start
+     * and fail on a slow one, for the same code). That's accepted deliberately -
+     * between the two ways this estimate can be wrong, a too-small budget means
+     * wrongly failing correct submissions with TLE (an unrecoverable, confusing
+     * false positive from the user's point of view), while a too-large budget
+     * only costs a bit of throughput and a slightly softer time limit. The
+     * policy is to err generous.
      */
     public long resolvedTimeoutMs(int problemTimeLimitMs, long startupBudgetMs) {
         return Math.round(problemTimeLimitMs * timeLimitMultiplier) + startupBudgetMs;

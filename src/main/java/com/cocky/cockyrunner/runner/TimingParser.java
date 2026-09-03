@@ -133,6 +133,30 @@ public final class TimingParser {
      * shell - is the second of the two. Scans for the marker rather than
      * assuming a fixed line number, and returns null (with a warn log) if the
      * marker is missing or the file doesn't have a usable line at that position.
+     *
+     * <p>This depends on a specific {@code times} output shape, worth spelling
+     * out explicitly since nothing enforces it at compile time:
+     * <ul>
+     *   <li>Exactly two lines, in order: the shell's own user/sys time, then its
+     *       children's <em>accumulated</em> user/sys time. This is what the run
+     *       wrapper's own two {@code times} calls (see {@link RunnerScript})
+     *       produce, and it's the second line of each that turns into the user
+     *       program's CPU time once it's run as this shell's child.</li>
+     *   <li>Verified against dash inside the {@code gcc:14} and
+     *       {@code python:3.11-slim} images specifically - both Debian, both
+     *       {@code /bin/sh} -> dash. A different shell (or a non-dash
+     *       {@code /bin/sh}) is not guaranteed to print this same two-line shape.</li>
+     *   <li>If the shape doesn't match - a different shell, a future image
+     *       change - this returns null rather than misreading it, and only the
+     *       CPU figure is lost; wall-clock timing (parsed independently, from the
+     *       START/END markers) is unaffected. This is the intended degradation,
+     *       not a bug: see the independence note in the class-level doc.</li>
+     *   <li>CPU time is display-only. Nothing in the judging path
+     *       ({@link com.cocky.cockyrunner.service.JudgeService#judgeCase}) reads
+     *       {@code userCpuMs} - AC/WA/TLE/RE are decided by stdout comparison and
+     *       the host-enforced wall-clock timeout, so a null (or wrong) CPU
+     *       reading here can never flip a verdict.</li>
+     * </ul>
      */
     private static Double childCpuSeconds(List<String> lines, String marker, Path timingFile) {
         for (int i = 0; i < lines.size(); i++) {

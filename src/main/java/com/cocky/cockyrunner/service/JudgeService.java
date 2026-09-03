@@ -83,6 +83,14 @@ public class JudgeService {
         long maxExecutionTimeMs = 0;
         Long userWallMs = null;
         Long userCpuMs = null;
+        // Tracks "have we snapshotted a case at all" separately from userWallMs
+        // itself, because userWallMs == null is also the normal shape of a
+        // snapshot whose timing simply couldn't be parsed (see TimingParser) -
+        // using userWallMs == null as the "no snapshot yet" signal would keep
+        // re-triggering on every later case until a non-null userWallMs finally
+        // showed up, letting a shorter later case overwrite a genuinely slower
+        // earlier one just because the earlier one's parse had failed.
+        boolean hasSnapshot = false;
 
         for (int i = 0; i < testCases.size(); i++) {
             TestCase testCase = testCases.get(i);
@@ -91,10 +99,11 @@ public class JudgeService {
             // Snapshot the timing breakdown together with the new max, rather than
             // maxing executionTimeMs alone and losing which test case it came from -
             // userWallMs/userCpuMs must describe the same run maxExecutionTimeMs does.
-            if (response.executionTimeMs() >= maxExecutionTimeMs) {
+            if (!hasSnapshot || response.executionTimeMs() > maxExecutionTimeMs) {
                 maxExecutionTimeMs = response.executionTimeMs();
                 userWallMs = response.userWallMs();
                 userCpuMs = response.userCpuMs();
+                hasSnapshot = true;
             }
 
             Verdict caseVerdict = judgeCase(testCase, response);
