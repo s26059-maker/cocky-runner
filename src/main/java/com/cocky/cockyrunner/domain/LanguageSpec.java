@@ -41,13 +41,21 @@ public record LanguageSpec(
     /**
      * The run timeout for this language on a problem with the given base time
      * limit: {@code problemTimeLimitMs * timeLimitMultiplier}, rounded to the
-     * nearest millisecond. The single formula both
+     * nearest millisecond, plus a fixed {@code startupBudgetMs} slack for
+     * container startup overhead. The single formula both
      * {@link com.cocky.cockyrunner.service.JudgeService} (to compute the timeout
      * it actually runs with) and {@link com.cocky.cockyrunner.repository.JsonProblemRepository}
      * (to validate at startup that no problem/language combination would exceed
      * {@code DockerRunner.MAX_TIMEOUT_MS}) use, so the two can never drift apart.
+     *
+     * <p>{@code startupBudgetMs} is added here, inside the one formula both of
+     * those callers share, specifically so it's included <em>before</em> either
+     * of them checks the result against {@code DockerRunner.MAX_TIMEOUT_MS} -
+     * were the budget added after that check instead, a problem/language
+     * combination could pass validation right at the boundary and then still
+     * exceed the real ceiling once the budget is folded in.
      */
-    public long resolvedTimeoutMs(int problemTimeLimitMs) {
-        return Math.round(problemTimeLimitMs * timeLimitMultiplier);
+    public long resolvedTimeoutMs(int problemTimeLimitMs, long startupBudgetMs) {
+        return Math.round(problemTimeLimitMs * timeLimitMultiplier) + startupBudgetMs;
     }
 }

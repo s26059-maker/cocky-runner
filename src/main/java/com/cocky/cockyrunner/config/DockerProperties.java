@@ -11,6 +11,7 @@ public record DockerProperties(
         double cpus,
         int pidsLimit,
         int maxOutputBytes,
-        String workDir
+        String workDir,
+        long startupBudgetMs
 ) {
 }

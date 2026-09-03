@@ -12,7 +12,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class LanguageSpecRegistryTest {
 
     private static DockerProperties propertiesWithImages(Map<String, String> images) {
-        return new DockerProperties(images, 5, "256m", 1.0, 64, 65536, "build/judge-work-test");
+        return new DockerProperties(images, 5, "256m", 1.0, 64, 65536, "build/judge-work-test", 0);
     }
 
     @Test

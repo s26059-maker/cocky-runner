@@ -33,7 +33,7 @@ class ExecutionControllerTest {
     @Test
     void success_returns200() throws Exception {
         when(executionService.execute(any()))
-                .thenReturn(new ExecutionResponse(ExecutionStatus.SUCCESS, "1\n", "", 0, 10));
+                .thenReturn(ExecutionResponse.withoutTiming(ExecutionStatus.SUCCESS, "1\n", "", 0, 10));
 
         mockMvc.perform(post("/api/v1/executions")
                         .contentType(MediaType.APPLICATION_JSON)

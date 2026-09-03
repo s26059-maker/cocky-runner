@@ -24,5 +24,22 @@ dependencies {
 }
 
 tasks.named('test') {
-	useJUnitPlatform()
+	// Tests tagged "docker" need a real Docker daemon (with gcc:14 and
+	// python:3.11-slim already pulled) and are excluded from the default run so
+	// `./gradlew test`/CI doesn't break on a machine without Docker - run them
+	// explicitly via `./gradlew dockerTest`.
+	useJUnitPlatform {
+		excludeTags 'docker'
+	}
+}
+
+tasks.register('dockerTest', Test) {
+	description = 'Runs tests tagged "docker" - requires a running Docker daemon with gcc:14 and python:3.11-slim already pulled.'
+	group = 'verification'
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	useJUnitPlatform {
+		includeTags 'docker'
+	}
+	shouldRunAfter test
 }

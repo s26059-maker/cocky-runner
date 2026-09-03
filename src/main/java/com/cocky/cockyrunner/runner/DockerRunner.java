@@ -7,6 +7,7 @@ import com.cocky.cockyrunner.dto.ExecutionResponse;
 import com.cocky.cockyrunner.exception.InvalidExecutionRequestException;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -39,6 +40,9 @@ public class DockerRunner {
     private static final Logger log = LoggerFactory.getLogger(DockerRunner.class);
     private static final int DOCKER_CLI_FAILURE_EXIT_CODE = 125;
 
+    /** Where the submission workspace is bind-mounted inside every container. */
+    private static final String CONTAINER_WORK_DIR = "/work";
+
     /** Fixed timeout for the compile step, independent of any per-test-case run timeout. */
     static final long COMPILE_TIMEOUT_MS = 10_000L;
 
@@ -49,7 +53,7 @@ public class DockerRunner {
      * rather than duplicating it, and {@link
      * com.cocky.cockyrunner.repository.JsonProblemRepository} checks every
      * problem/language combination against it at startup (via {@link
-     * com.cocky.cockyrunner.domain.LanguageSpec#resolvedTimeoutMs(int)}) so a
+     * com.cocky.cockyrunner.domain.LanguageSpec#resolvedTimeoutMs(int, long)}) so a
      * problem whose resolved timeout would exceed it is caught before it can ever
      * reach {@link #run}, rather than surfacing as a confusing 400 on first submit.
      */
@@ -95,7 +99,11 @@ public class DockerRunner {
         try {
             workDir = Files.createDirectory(workDirRoot.resolve(UUID.randomUUID().toString()));
             Files.writeString(workDir.resolve(spec.sourceFileName()), code, StandardCharsets.UTF_8);
-        } catch (IOException e) {
+            // Written once per submission, alongside the source - every run() call
+            // below invokes this rather than the user's program directly, so it must
+            // be in place before the first container for this workspace ever starts.
+            RunnerScript.writeTo(workDir);
+        } catch (IOException | UncheckedIOException e) {
             log.error("failed to prepare submission workspace", e);
             return DockerSubmissionExecution.infraFailure(this, null,
                     errorResponse("failed to prepare workspace: " + e.getMessage()));
@@ -119,7 +127,7 @@ public class DockerRunner {
     }
 
     private ExecutionResponse errorResponse(String message) {
-        return new ExecutionResponse(ExecutionStatus.ERROR, "", message, -1, 0);
+        return ExecutionResponse.withoutTiming(ExecutionStatus.ERROR, "", message, -1, 0);
     }
 
     /**
@@ -129,10 +137,24 @@ public class DockerRunner {
      */
     ExecutionResponse run(Path workDir, LanguageSpec spec, String stdin, long timeoutMs) {
         validateTimeout(timeoutMs);
-        long start = System.currentTimeMillis();
+        // Belt-and-suspenders: the wrapper script itself truncates this file as its
+        // first action, but that only helps if the container starts at all - if
+        // `docker run` itself never launches, a stale file from the previous test
+        // case in this same workspace would otherwise be read as this one's result.
+        RunnerScript.clearTiming(workDir);
+        // nanoTime, not currentTimeMillis: this measures elapsed duration, and the
+        // wall clock can jump (NTP sync) in ways that would corrupt that.
+        long startNanos = System.nanoTime();
         String containerName = "run-" + UUID.randomUUID();
         try {
-            List<String> command = buildContainerCommand(containerName, workDir, spec.dockerImage(), spec.runCommand(), true);
+            List<String> wrappedCommand = new ArrayList<>();
+            wrappedCommand.add("sh");
+            wrappedCommand.add(CONTAINER_WORK_DIR + "/" + RunnerScript.FILE_NAME);
+            wrappedCommand.addAll(spec.runCommand());
+            // Not read-only: the wrapper needs to write /work/.timing. The compile
+            // step (below) still mounts read-write for its own reasons (writing the
+            // compiled binary) and is untouched by this - it never runs the wrapper.
+            List<String> command = buildContainerCommand(containerName, workDir, spec.dockerImage(), wrappedCommand, false);
             Process process = new ProcessBuilder(command).start();
 
             writeStdin(process, stdin);
@@ -148,8 +170,14 @@ public class DockerRunner {
                 killContainer(containerName);
                 stdoutThread.join(TimeUnit.SECONDS.toMillis(5));
                 stderrThread.join(TimeUnit.SECONDS.toMillis(5));
-                return new ExecutionResponse(ExecutionStatus.TIMEOUT, stdoutCollector.output(), stderrCollector.output(),
-                        -1, System.currentTimeMillis() - start);
+                // Deliberately not parsed via TimingParser: on a real timeout the
+                // wrapper wrote START/BEFORE and then never got to run AFTER/END (the
+                // user program itself is what didn't finish), so the file exists but
+                // is genuinely partial - parsing it would log a warning on every
+                // single TLE. A timeout with no reliable user-time breakdown is
+                // exactly the unmeasured case, same as no file at all.
+                return ExecutionResponse.withoutTiming(ExecutionStatus.TIMEOUT, stdoutCollector.output(), stderrCollector.output(),
+                        -1, elapsedMs(startNanos));
             }
 
             stdoutThread.join();
@@ -158,24 +186,30 @@ public class DockerRunner {
             int exitCode = process.exitValue();
             String stdout = stdoutCollector.output();
             String stderr = stderrCollector.output();
-            long elapsed = System.currentTimeMillis() - start;
+            ExecutionTiming timing = TimingParser.parse(workDir, elapsedMs(startNanos));
 
             if (exitCode == DOCKER_CLI_FAILURE_EXIT_CODE) {
                 log.error("docker run failed for container {}: {}", containerName, stderr);
-                return new ExecutionResponse(ExecutionStatus.ERROR, stdout, stderr, exitCode, elapsed);
+                return new ExecutionResponse(ExecutionStatus.ERROR, stdout, stderr, exitCode,
+                        timing.totalWallMs(), timing.userWallMs(), timing.userCpuMs());
             }
 
             ExecutionStatus status = exitCode == 0 ? ExecutionStatus.SUCCESS : ExecutionStatus.RUNTIME_ERROR;
-            return new ExecutionResponse(status, stdout, stderr, exitCode, elapsed);
+            return new ExecutionResponse(status, stdout, stderr, exitCode,
+                    timing.totalWallMs(), timing.userWallMs(), timing.userCpuMs());
 
         } catch (IOException e) {
             log.error("failed to launch docker process", e);
-            return new ExecutionResponse(ExecutionStatus.ERROR, "", "failed to run docker: " + e.getMessage(),
-                    -1, System.currentTimeMillis() - start);
+            return ExecutionResponse.withoutTiming(ExecutionStatus.ERROR, "", "failed to run docker: " + e.getMessage(),
+                    -1, elapsedMs(startNanos));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("execution was interrupted", e);
         }
+    }
+
+    private static long elapsedMs(long startNanos) {
+        return (System.nanoTime() - startNanos) / 1_000_000L;
     }
 
     /**
@@ -278,9 +312,9 @@ public class DockerRunner {
         full.add("--name");
         full.add(containerName);
         full.add("-v");
-        full.add(normalizeForDocker(workDir) + ":/work" + (readOnlyMount ? ":ro" : ""));
+        full.add(normalizeForDocker(workDir) + ":" + CONTAINER_WORK_DIR + (readOnlyMount ? ":ro" : ""));
         full.add("-w");
-        full.add("/work");
+        full.add(CONTAINER_WORK_DIR);
         full.add(image);
         full.addAll(command);
         return full;

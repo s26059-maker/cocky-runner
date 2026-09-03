@@ -37,7 +37,7 @@ class SubmissionControllerTest {
     @Test
     void acVerdict_returns200() throws Exception {
         when(judgeService.judge(eq("a-plus-b"), eq(Language.PYTHON), any()))
-                .thenReturn(new JudgeResult(Verdict.AC, 3, 3, null, 412, null));
+                .thenReturn(JudgeResult.withoutTiming(Verdict.AC, 3, 3, null, 412, null));
 
         mockMvc.perform(post("/api/v1/problems/a-plus-b/submissions")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -54,7 +54,7 @@ class SubmissionControllerTest {
     @Test
     void waVerdict_returns200WithFailedCaseNumber() throws Exception {
         when(judgeService.judge(eq("a-plus-b"), eq(Language.PYTHON), any()))
-                .thenReturn(new JudgeResult(Verdict.WA, 1, 3, 2, 120, null));
+                .thenReturn(JudgeResult.withoutTiming(Verdict.WA, 1, 3, 2, 120, null));
 
         mockMvc.perform(post("/api/v1/problems/a-plus-b/submissions")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -68,7 +68,7 @@ class SubmissionControllerTest {
     @Test
     void errorVerdict_returns500() throws Exception {
         when(judgeService.judge(eq("a-plus-b"), eq(Language.PYTHON), any()))
-                .thenReturn(new JudgeResult(Verdict.ERROR, 0, 3, 1, 0, null));
+                .thenReturn(JudgeResult.withoutTiming(Verdict.ERROR, 0, 3, 1, 0, null));
 
         mockMvc.perform(post("/api/v1/problems/a-plus-b/submissions")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -80,7 +80,7 @@ class SubmissionControllerTest {
     @Test
     void reVerdictOnSampleCase_returns200WithErrorOutput() throws Exception {
         when(judgeService.judge(eq("a-plus-b"), eq(Language.PYTHON), any()))
-                .thenReturn(new JudgeResult(Verdict.RE, 0, 3, 1, 50, "Traceback...\nValueError: invalid literal"));
+                .thenReturn(JudgeResult.withoutTiming(Verdict.RE, 0, 3, 1, 50, "Traceback...\nValueError: invalid literal"));
 
         mockMvc.perform(post("/api/v1/problems/a-plus-b/submissions")
                         .contentType(MediaType.APPLICATION_JSON)
