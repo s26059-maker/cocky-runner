@@ -51,6 +51,13 @@ class LanguageSpecTest {
     void resolvedTimeoutMs_appliesMultiplierAndRounds() {
         LanguageSpec spec = new LanguageSpec("python:3.11-slim", "main.py", null, List.of("python3", "main.py"), 3.0);
 
-        assertThat(spec.resolvedTimeoutMs(2000)).isEqualTo(6000L);
+        assertThat(spec.resolvedTimeoutMs(2000, 0)).isEqualTo(6000L);
+    }
+
+    @Test
+    void resolvedTimeoutMs_addsStartupBudgetOnTopOfTheScaledLimit() {
+        LanguageSpec spec = new LanguageSpec("python:3.11-slim", "main.py", null, List.of("python3", "main.py"), 3.0);
+
+        assertThat(spec.resolvedTimeoutMs(2000, 1000)).isEqualTo(7000L);
     }
 }

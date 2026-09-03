@@ -1,5 +1,6 @@
 package com.cocky.cockyrunner.service;
 
+import com.cocky.cockyrunner.config.DockerProperties;
 import com.cocky.cockyrunner.config.LanguageSpecRegistry;
 import com.cocky.cockyrunner.domain.JudgeResult;
 import com.cocky.cockyrunner.domain.Language;
@@ -34,13 +35,15 @@ public class JudgeService {
     private final ProblemRepository problemRepository;
     private final ExecutionService executionService;
     private final LanguageSpecRegistry languageSpecRegistry;
+    private final long startupBudgetMs;
     private final OutputComparator outputComparator = new OutputComparator();
 
     public JudgeService(ProblemRepository problemRepository, ExecutionService executionService,
-                         LanguageSpecRegistry languageSpecRegistry) {
+                         LanguageSpecRegistry languageSpecRegistry, DockerProperties dockerProperties) {
         this.problemRepository = problemRepository;
         this.executionService = executionService;
         this.languageSpecRegistry = languageSpecRegistry;
+        this.startupBudgetMs = dockerProperties.startupBudgetMs();
     }
 
     public JudgeResult judge(String problemId, Language language, String code) {
@@ -52,7 +55,7 @@ public class JudgeService {
         try (SubmissionExecution execution = executionService.prepare(language, code)) {
             if (execution.compilationFailed()) {
                 String errorOutput = TextTruncator.truncate(execution.compileErrorOutput());
-                return new JudgeResult(Verdict.CE, 0, problem.testCases().size(), null, 0, errorOutput);
+                return JudgeResult.withoutTiming(Verdict.CE, 0, problem.testCases().size(), null, 0, errorOutput);
             }
             if (execution.infrastructureFailed()) {
                 // Infra failure happened before any test case was picked, so there's no
@@ -64,7 +67,7 @@ public class JudgeService {
                 log.error("infrastructure failure preparing submission for problem {} language {}; " +
                         "short-circuiting to ERROR instead of running {} test case(s): {}",
                         problemId, language, problem.testCases().size(), execution.infrastructureFailureDetail());
-                return new JudgeResult(Verdict.ERROR, 0, problem.testCases().size(), null, 0, null);
+                return JudgeResult.withoutTiming(Verdict.ERROR, 0, problem.testCases().size(), null, 0, null);
             }
             return runTestCases(problem, execution, timeoutMs);
         }
@@ -78,22 +81,42 @@ public class JudgeService {
         List<TestCase> testCases = problem.testCases();
         int passedCount = 0;
         long maxExecutionTimeMs = 0;
+        Long userWallMs = null;
+        Long userCpuMs = null;
+        // Tracks "have we snapshotted a case at all" separately from userWallMs
+        // itself, because userWallMs == null is also the normal shape of a
+        // snapshot whose timing simply couldn't be parsed (see TimingParser) -
+        // using userWallMs == null as the "no snapshot yet" signal would keep
+        // re-triggering on every later case until a non-null userWallMs finally
+        // showed up, letting a shorter later case overwrite a genuinely slower
+        // earlier one just because the earlier one's parse had failed.
+        boolean hasSnapshot = false;
 
         for (int i = 0; i < testCases.size(); i++) {
             TestCase testCase = testCases.get(i);
             ExecutionResponse response = executionService.execute(execution, testCase.input(), timeoutMs);
 
-            maxExecutionTimeMs = Math.max(maxExecutionTimeMs, response.executionTimeMs());
+            // Snapshot the timing breakdown together with the new max, rather than
+            // maxing executionTimeMs alone and losing which test case it came from -
+            // userWallMs/userCpuMs must describe the same run maxExecutionTimeMs does.
+            if (!hasSnapshot || response.executionTimeMs() > maxExecutionTimeMs) {
+                maxExecutionTimeMs = response.executionTimeMs();
+                userWallMs = response.userWallMs();
+                userCpuMs = response.userCpuMs();
+                hasSnapshot = true;
+            }
 
             Verdict caseVerdict = judgeCase(testCase, response);
             if (caseVerdict != Verdict.AC) {
                 String errorOutput = extractErrorOutput(caseVerdict, testCase, response);
-                return new JudgeResult(caseVerdict, passedCount, testCases.size(), i + 1, maxExecutionTimeMs, errorOutput);
+                return new JudgeResult(caseVerdict, passedCount, testCases.size(), i + 1, maxExecutionTimeMs,
+                        errorOutput, userWallMs, userCpuMs);
             }
             passedCount++;
         }
 
-        return new JudgeResult(Verdict.AC, passedCount, testCases.size(), null, maxExecutionTimeMs, null);
+        return new JudgeResult(Verdict.AC, passedCount, testCases.size(), null, maxExecutionTimeMs, null,
+                userWallMs, userCpuMs);
     }
 
     /**
@@ -106,9 +129,9 @@ public class JudgeService {
      */
     private long resolveTimeoutMs(Problem problem, Language language) {
         LanguageSpec spec = languageSpecRegistry.get(language);
-        long timeoutMs = spec.resolvedTimeoutMs(problem.timeLimitMs());
-        log.info("resolved run timeout for problem {} language {}: {}ms (base {}ms x multiplier {})",
-                problem.id(), language, timeoutMs, problem.timeLimitMs(), spec.timeLimitMultiplier());
+        long timeoutMs = spec.resolvedTimeoutMs(problem.timeLimitMs(), startupBudgetMs);
+        log.info("resolved run timeout for problem {} language {}: {}ms (base {}ms x multiplier {} + {}ms startup budget)",
+                problem.id(), language, timeoutMs, problem.timeLimitMs(), spec.timeLimitMultiplier(), startupBudgetMs);
         return timeoutMs;
     }
 

@@ -32,7 +32,7 @@ class ExecutionServiceTest {
 
     private final DockerRunner dockerRunner = mock(DockerRunner.class);
     private final DockerProperties properties = new DockerProperties(
-            Map.of("c", "gcc:14", "python", "python:3.11-slim"), 5, "256m", 1.0, 64, 65536, "build/judge-work-test");
+            Map.of("c", "gcc:14", "python", "python:3.11-slim"), 5, "256m", 1.0, 64, 65536, "build/judge-work-test", 0);
     private final LanguageSpecRegistry languageSpecRegistry = new LanguageSpecRegistry(properties);
     private final ExecutionService executionService = new ExecutionService(dockerRunner, languageSpecRegistry, properties);
 
@@ -49,7 +49,7 @@ class ExecutionServiceTest {
         SubmissionExecution execution = readyExecution();
         when(dockerRunner.prepareSubmission(eq(languageSpecRegistry.get(Language.PYTHON)), eq("print(1)")))
                 .thenReturn(execution);
-        ExecutionResponse expected = new ExecutionResponse(ExecutionStatus.SUCCESS, "1\n", "", 0, 10);
+        ExecutionResponse expected = ExecutionResponse.withoutTiming(ExecutionStatus.SUCCESS, "1\n", "", 0, 10);
         when(execution.run("", 5000L)).thenReturn(expected);
 
         ExecutionResponse actual = executionService.execute(request);
@@ -74,7 +74,7 @@ class ExecutionServiceTest {
         SubmissionExecution execution = readyExecution();
         when(dockerRunner.prepareSubmission(eq(languageSpecRegistry.get(Language.PYTHON)), eq("print(1)")))
                 .thenReturn(execution);
-        ExecutionResponse expected = new ExecutionResponse(ExecutionStatus.SUCCESS, "1\n", "", 0, 10);
+        ExecutionResponse expected = ExecutionResponse.withoutTiming(ExecutionStatus.SUCCESS, "1\n", "", 0, 10);
         when(execution.run("", DockerRunner.MAX_TIMEOUT_MS)).thenReturn(expected);
 
         ExecutionResponse actual = executionService.execute(request, DockerRunner.MAX_TIMEOUT_MS);
@@ -142,7 +142,7 @@ class ExecutionServiceTest {
     @Test
     void executeWithSubmissionExecution_delegatesToRun() {
         SubmissionExecution execution = readyExecution();
-        ExecutionResponse expected = new ExecutionResponse(ExecutionStatus.SUCCESS, "out", "", 0, 10);
+        ExecutionResponse expected = ExecutionResponse.withoutTiming(ExecutionStatus.SUCCESS, "out", "", 0, 10);
         when(execution.run("in", 1500L)).thenReturn(expected);
 
         ExecutionResponse actual = executionService.execute(execution, "in", 1500L);

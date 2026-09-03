@@ -43,13 +43,16 @@ class JudgeServiceTest {
 
     @BeforeEach
     void setUp() {
-        judgeService = new JudgeService(problemRepository, executionService, languageSpecRegistry);
+        // startupBudgetMs is 0 here so every exact-timeout assertion below (2000L,
+        // 1234L, 3000L, 1000L, ...) stays a bare multiplier result - the
+        // startupBudgetMs_isAddedToTheResolvedTimeout test covers the nonzero case.
+        judgeService = new JudgeService(problemRepository, executionService, languageSpecRegistry, testDockerProperties());
     }
 
     private static DockerProperties testDockerProperties() {
         return new DockerProperties(
                 Map.of("c", "gcc:14", "python", "python:3.11-slim"),
-                5, "256m", 1.0, 64, 65536, "build/judge-work-test");
+                5, "256m", 1.0, 64, 65536, "build/judge-work-test", 0);
     }
 
     /** A ready-to-run (compiled successfully, no infra failure) mock execution. */
@@ -131,7 +134,7 @@ class JudgeServiceTest {
         SubmissionExecution execution = readyExecution();
         stubPrepare(execution);
         when(executionService.execute(eq(execution), anyString(), eq(2000L)))
-                .thenReturn(new ExecutionResponse(status, "", "", exitCode, 500));
+                .thenReturn(ExecutionResponse.withoutTiming(status, "", "", exitCode, 500));
 
         JudgeResult result = judgeService.judge("p1", Language.C, "code");
 
@@ -197,6 +200,27 @@ class JudgeServiceTest {
     }
 
     @Test
+    void startupBudgetMs_isAddedOnTopOfTheScaledTimeout() {
+        DockerProperties propertiesWithBudget = new DockerProperties(
+                Map.of("c", "gcc:14", "python", "python:3.11-slim"),
+                5, "256m", 1.0, 64, 65536, "build/judge-work-test", 500);
+        JudgeService judgeServiceWithBudget =
+                new JudgeService(problemRepository, executionService, languageSpecRegistry, propertiesWithBudget);
+        TestCase tc = new TestCase("in", "out", true);
+        Problem problem = new Problem("p1", "title", "desc", 1000, List.of(tc));
+        when(problemRepository.findById("p1")).thenReturn(Optional.of(problem));
+        SubmissionExecution execution = readyExecution();
+        stubPrepare(execution);
+        when(executionService.execute(eq(execution), anyString(), anyLong()))
+                .thenReturn(success("out", 50));
+
+        judgeServiceWithBudget.judge("p1", Language.C, "code");
+
+        // C's multiplier is 1.0, so 1000ms base + 500ms budget = 1500ms.
+        verify(executionService).execute(eq(execution), anyString(), eq(1500L));
+    }
+
+    @Test
     void reOnSampleCase_includesErrorOutput() {
         TestCase tc = new TestCase("in", "out", true);
         Problem problem = new Problem("p1", "title", "desc", 2000, List.of(tc));
@@ -204,7 +228,7 @@ class JudgeServiceTest {
         SubmissionExecution execution = readyExecution();
         stubPrepare(execution);
         when(executionService.execute(eq(execution), anyString(), eq(2000L)))
-                .thenReturn(new ExecutionResponse(ExecutionStatus.RUNTIME_ERROR, "", "Traceback...\nValueError: invalid literal", 1, 50));
+                .thenReturn(ExecutionResponse.withoutTiming(ExecutionStatus.RUNTIME_ERROR, "", "Traceback...\nValueError: invalid literal", 1, 50));
 
         JudgeResult result = judgeService.judge("p1", Language.C, "code");
 
@@ -220,7 +244,7 @@ class JudgeServiceTest {
         SubmissionExecution execution = readyExecution();
         stubPrepare(execution);
         when(executionService.execute(eq(execution), anyString(), eq(2000L)))
-                .thenReturn(new ExecutionResponse(ExecutionStatus.RUNTIME_ERROR, "", "some stderr the client must never see", 1, 50));
+                .thenReturn(ExecutionResponse.withoutTiming(ExecutionStatus.RUNTIME_ERROR, "", "some stderr the client must never see", 1, 50));
 
         JudgeResult result = judgeService.judge("p1", Language.C, "code");
 
@@ -236,7 +260,7 @@ class JudgeServiceTest {
         SubmissionExecution execution = readyExecution();
         stubPrepare(execution);
         when(executionService.execute(eq(execution), anyString(), eq(2000L)))
-                .thenReturn(new ExecutionResponse(ExecutionStatus.ERROR, "", "failed to run docker: boom", -1, 50));
+                .thenReturn(ExecutionResponse.withoutTiming(ExecutionStatus.ERROR, "", "failed to run docker: boom", -1, 50));
 
         JudgeResult result = judgeService.judge("p1", Language.C, "code");
 
@@ -252,7 +276,7 @@ class JudgeServiceTest {
         SubmissionExecution execution = readyExecution();
         stubPrepare(execution);
         when(executionService.execute(eq(execution), anyString(), eq(2000L)))
-                .thenReturn(new ExecutionResponse(ExecutionStatus.SUCCESS, "wrong-output", "", 0, 50));
+                .thenReturn(ExecutionResponse.withoutTiming(ExecutionStatus.SUCCESS, "wrong-output", "", 0, 50));
 
         JudgeResult result = judgeService.judge("p1", Language.C, "code");
 
@@ -268,7 +292,7 @@ class JudgeServiceTest {
         SubmissionExecution execution = readyExecution();
         stubPrepare(execution);
         when(executionService.execute(eq(execution), anyString(), eq(2000L)))
-                .thenReturn(new ExecutionResponse(ExecutionStatus.TIMEOUT, "", "", -1, 2000));
+                .thenReturn(ExecutionResponse.withoutTiming(ExecutionStatus.TIMEOUT, "", "", -1, 2000));
 
         JudgeResult result = judgeService.judge("p1", Language.C, "code");
 
@@ -285,7 +309,7 @@ class JudgeServiceTest {
         stubPrepare(execution);
         String longStderr = "x".repeat(TextTruncator.MAX_LENGTH + 1000);
         when(executionService.execute(eq(execution), anyString(), eq(2000L)))
-                .thenReturn(new ExecutionResponse(ExecutionStatus.RUNTIME_ERROR, "", longStderr, 1, 50));
+                .thenReturn(ExecutionResponse.withoutTiming(ExecutionStatus.RUNTIME_ERROR, "", longStderr, 1, 50));
 
         JudgeResult result = judgeService.judge("p1", Language.C, "code");
 
@@ -433,6 +457,72 @@ class JudgeServiceTest {
     }
 
     private ExecutionResponse success(String stdout, long executionTimeMs) {
-        return new ExecutionResponse(ExecutionStatus.SUCCESS, stdout, "", 0, executionTimeMs);
+        return ExecutionResponse.withoutTiming(ExecutionStatus.SUCCESS, stdout, "", 0, executionTimeMs);
+    }
+
+    private ExecutionResponse successWithTiming(String stdout, long executionTimeMs, long userWallMs, long userCpuMs) {
+        return new ExecutionResponse(ExecutionStatus.SUCCESS, stdout, "", 0, executionTimeMs, userWallMs, userCpuMs);
+    }
+
+    @Test
+    void userWallAndCpuMs_areCarriedOverFromTheSlowestCase() {
+        TestCase tc1 = new TestCase("in1", "out1", true);
+        TestCase tc2 = new TestCase("in2", "out2", false);
+        Problem problem = new Problem("p1", "title", "desc", 2000, List.of(tc1, tc2));
+        when(problemRepository.findById("p1")).thenReturn(Optional.of(problem));
+        SubmissionExecution execution = readyExecution();
+        stubPrepare(execution);
+        when(executionService.execute(eq(execution), anyString(), eq(2000L)))
+                .thenReturn(successWithTiming("out1", 100, 60, 40))
+                .thenReturn(successWithTiming("out2", 300, 250, 200));
+
+        JudgeResult result = judgeService.judge("p1", Language.C, "code");
+
+        assertThat(result.maxExecutionTimeMs()).isEqualTo(300);
+        // Must come from the same (second) test case maxExecutionTimeMs came from,
+        // not e.g. the max of userWallMs/userCpuMs independently across cases.
+        assertThat(result.userWallMs()).isEqualTo(250L);
+        assertThat(result.userCpuMs()).isEqualTo(200L);
+    }
+
+    @Test
+    void aSlowerCaseWithFailedTimingParse_isNotOverwrittenByALaterShorterCase() {
+        // Regression for the hasSnapshot flag: userWallMs == null is also the
+        // normal shape of "this case's timing just didn't parse", not only "no
+        // snapshot taken yet" - a null-check alone would keep re-triggering on
+        // every later case (since the local userWallMs stays null) until a
+        // non-null one showed up, letting case 2's shorter, successfully-parsed
+        // time silently overwrite case 1's genuinely slower one.
+        TestCase tc1 = new TestCase("in1", "out1", true);
+        TestCase tc2 = new TestCase("in2", "out2", false);
+        Problem problem = new Problem("p1", "title", "desc", 2000, List.of(tc1, tc2));
+        when(problemRepository.findById("p1")).thenReturn(Optional.of(problem));
+        SubmissionExecution execution = readyExecution();
+        stubPrepare(execution);
+        when(executionService.execute(eq(execution), anyString(), eq(2000L)))
+                .thenReturn(success("out1", 300))              // slower, but timing parse failed
+                .thenReturn(successWithTiming("out2", 100, 80, 50)); // faster, timing parsed fine
+
+        JudgeResult result = judgeService.judge("p1", Language.C, "code");
+
+        assertThat(result.maxExecutionTimeMs()).isEqualTo(300);
+        assertThat(result.userWallMs()).isNull();
+        assertThat(result.userCpuMs()).isNull();
+    }
+
+    @Test
+    void userWallAndCpuMs_nullWhenTimingCouldNotBeDetermined() {
+        TestCase tc = new TestCase("in", "out", true);
+        Problem problem = new Problem("p1", "title", "desc", 2000, List.of(tc));
+        when(problemRepository.findById("p1")).thenReturn(Optional.of(problem));
+        SubmissionExecution execution = readyExecution();
+        stubPrepare(execution);
+        when(executionService.execute(eq(execution), anyString(), eq(2000L)))
+                .thenReturn(success("out", 100));
+
+        JudgeResult result = judgeService.judge("p1", Language.C, "code");
+
+        assertThat(result.userWallMs()).isNull();
+        assertThat(result.userCpuMs()).isNull();
     }
 }

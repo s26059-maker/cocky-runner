@@ -52,7 +52,7 @@ public class ExecutionService {
         try (SubmissionExecution execution = prepare(language, request.code())) {
             if (execution.compilationFailed()) {
                 String compileErrorOutput = TextTruncator.truncate(execution.compileErrorOutput());
-                return new ExecutionResponse(ExecutionStatus.COMPILE_ERROR, "", compileErrorOutput, -1, 0);
+                return ExecutionResponse.withoutTiming(ExecutionStatus.COMPILE_ERROR, "", compileErrorOutput, -1, 0);
             }
             return execute(execution, request.stdin(), timeoutMs);
         }
