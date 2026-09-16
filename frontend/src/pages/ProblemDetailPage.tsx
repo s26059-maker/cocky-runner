@@ -21,6 +21,7 @@ import './ProblemDetailPage.css'
 const LANGUAGE_LABELS: Record<SupportedLanguage, string> = {
   C: 'C',
   PYTHON: 'Python',
+  JAVA: 'Java',
 }
 
 const IS_MAC = /Mac|iPhone|iPad|iPod/.test(navigator.userAgent)
@@ -185,6 +186,9 @@ function ProblemDetailPage() {
             )}
 
             <div className="solution-panel__actions">
+              {language === 'JAVA' && (
+                <span className="solution-panel__language-hint">클래스 이름은 Main이어야 합니다</span>
+              )}
               <span className="solution-panel__shortcut-hint">{SUBMIT_SHORTCUT_LABEL}</span>
               <Button onClick={handleSubmit} disabled={!canSubmit} title={`${SUBMIT_SHORTCUT_LABEL}로도 제출할 수 있습니다`}>
                 {submitting ? '채점 중...' : '제출'}
