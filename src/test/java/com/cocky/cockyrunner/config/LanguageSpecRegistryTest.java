@@ -18,7 +18,8 @@ class LanguageSpecRegistryTest {
     private static Map<Language, LanguageDockerProperties> validLanguages() {
         return Map.of(
                 Language.C, new LanguageDockerProperties("gcc:14", 1000),
-                Language.PYTHON, new LanguageDockerProperties("python:3.11-slim", 1000)
+                Language.PYTHON, new LanguageDockerProperties("python:3.11-slim", 1000),
+                Language.JAVA, new LanguageDockerProperties("eclipse-temurin:21-jdk", 2000)
         );
     }
 
@@ -39,19 +40,30 @@ class LanguageSpecRegistryTest {
         assertThat(python.needsCompile()).isFalse();
         assertThat(python.timeLimitMultiplier()).isEqualTo(3.0);
         assertThat(python.startupBudgetMs()).isEqualTo(1000L);
+
+        LanguageSpec java = registry.get(Language.JAVA);
+        assertThat(java.dockerImage()).isEqualTo("eclipse-temurin:21-jdk");
+        assertThat(java.sourceFileName()).isEqualTo("Main.java");
+        assertThat(java.needsCompile()).isTrue();
+        assertThat(java.compileCommand()).containsExactly("javac", "-encoding", "UTF-8", "-d", "/work", "Main.java");
+        assertThat(java.runCommand()).containsExactly("java", "-XX:+UseSerialGC", "-Xss8m", "-cp", "/work", "Main");
+        assertThat(java.timeLimitMultiplier()).isEqualTo(2.0);
+        assertThat(java.startupBudgetMs()).isEqualTo(2000L);
     }
 
     @Test
     void get_usesEachLanguagesOwnConfiguredStartupBudget() {
         Map<Language, LanguageDockerProperties> languages = Map.of(
                 Language.C, new LanguageDockerProperties("gcc:14", 200),
-                Language.PYTHON, new LanguageDockerProperties("python:3.11-slim", 5000)
+                Language.PYTHON, new LanguageDockerProperties("python:3.11-slim", 5000),
+                Language.JAVA, new LanguageDockerProperties("eclipse-temurin:21-jdk", 3000)
         );
 
         LanguageSpecRegistry registry = new LanguageSpecRegistry(propertiesWithLanguages(languages));
 
         assertThat(registry.get(Language.C).startupBudgetMs()).isEqualTo(200L);
         assertThat(registry.get(Language.PYTHON).startupBudgetMs()).isEqualTo(5000L);
+        assertThat(registry.get(Language.JAVA).startupBudgetMs()).isEqualTo(3000L);
     }
 
     @Test
@@ -64,6 +76,22 @@ class LanguageSpecRegistryTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("C")
                 .hasMessageContaining("runner.docker.languages.c");
+    }
+
+    @Test
+    void constructor_throwsWhenJavaIsMissingEntirely() {
+        // C and PYTHON present, JAVA intentionally absent - proves the exhaustive
+        // Language.values() loop in the constructor picks up a new enum value
+        // automatically rather than needing its own hardcoded check.
+        DockerProperties properties = propertiesWithLanguages(Map.of(
+                Language.C, new LanguageDockerProperties("gcc:14", 1000),
+                Language.PYTHON, new LanguageDockerProperties("python:3.11-slim", 1000)
+        ));
+
+        assertThatThrownBy(() -> new LanguageSpecRegistry(properties))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("JAVA")
+                .hasMessageContaining("runner.docker.languages.java");
     }
 
     @Test

@@ -17,11 +17,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class JsonProblemRepositoryTest {
 
-    private static LanguageSpecRegistry registryWithBudgets(long budgetC, long budgetPython) {
+    private static LanguageSpecRegistry registryWithBudgets(long budgetC, long budgetPython, long budgetJava) {
         DockerProperties properties = new DockerProperties(
                 Map.of(
                         Language.C, new LanguageDockerProperties("gcc:14", budgetC),
-                        Language.PYTHON, new LanguageDockerProperties("python:3.11-slim", budgetPython)
+                        Language.PYTHON, new LanguageDockerProperties("python:3.11-slim", budgetPython),
+                        Language.JAVA, new LanguageDockerProperties("eclipse-temurin:21-jdk", budgetJava)
                 ),
                 5, "256m", 1.0, 64, 65536, "build/judge-work-test");
         return new LanguageSpecRegistry(properties);
@@ -32,7 +33,7 @@ class JsonProblemRepositoryTest {
     // MAX_TIMEOUT_MS - budget divides evenly by PYTHON's 3.0 multiplier, giving a clean
     // integer boundary with no rounding ambiguity.
     private static LanguageSpecRegistry uniformBudgetRegistry() {
-        return registryWithBudgets(3, 3);
+        return registryWithBudgets(3, 3, 3);
     }
 
     private static Problem problemWithTimeLimit(int timeLimitMs) {
@@ -95,7 +96,7 @@ class JsonProblemRepositoryTest {
         // PYTHON's configured budget of 1ms must push it over MAX_TIMEOUT_MS and be
         // caught, proving the budget is added before the check runs rather than after
         // (or not at all).
-        LanguageSpecRegistry registry = registryWithBudgets(1, 1);
+        LanguageSpecRegistry registry = registryWithBudgets(1, 1, 1);
         int atBoundaryForPython = 10_000; // 10000*3 = 30000 == MAX with budget 0, but +1 exceeds it
         Problem problem = problemWithTimeLimit(atBoundaryForPython);
 
@@ -106,7 +107,7 @@ class JsonProblemRepositoryTest {
 
     @Test
     void startupBudgetMs_stillPassesWhenWellUnderTheMax() {
-        LanguageSpecRegistry registry = registryWithBudgets(1000, 1000);
+        LanguageSpecRegistry registry = registryWithBudgets(1000, 1000, 1000);
         Problem problem = problemWithTimeLimit(2000);
 
         assertThatCode(() -> JsonProblemRepository.validateTimeLimits(List.of(problem), registry))
@@ -119,10 +120,11 @@ class JsonProblemRepositoryTest {
         // budget that alone (even with a modest base time limit) pushes it over -
         // proving each language's own configured budget is what's actually used, not
         // a single shared value.
-        LanguageSpecRegistry registry = registryWithBudgets(1000, 29_000);
+        LanguageSpecRegistry registry = registryWithBudgets(1000, 29_000, 1000);
         Problem problem = problemWithTimeLimit(1000);
         // C:      1000*1.0 +  1000 =  2000ms, well under MAX_TIMEOUT_MS (30000)
         // PYTHON: 1000*3.0 + 29000 = 32000ms, over MAX_TIMEOUT_MS (30000)
+        // JAVA:   1000*2.0 +  1000 =  3000ms, well under MAX_TIMEOUT_MS (30000)
 
         assertThatThrownBy(() -> JsonProblemRepository.validateTimeLimits(List.of(problem), registry))
                 .isInstanceOf(IllegalStateException.class)

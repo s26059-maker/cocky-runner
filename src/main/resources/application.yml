@@ -26,5 +26,9 @@ runner:
       python:
         image: python:3.11-slim
         startup-budget-ms: 1000
+      java:
+        image: eclipse-temurin:21-jdk
+        # 임시값, 캘리브레이션 전 - 다음 단계에서 실측 기반으로 확정 예정.
+        startup-budget-ms: 2000
 server:
   port: 18080

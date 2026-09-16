@@ -41,7 +41,8 @@ class DockerRunnerTest {
         return new DockerProperties(
                 Map.of(
                         Language.C, new LanguageDockerProperties("gcc:14", 1000),
-                        Language.PYTHON, new LanguageDockerProperties("python:3.11-slim", 1000)
+                        Language.PYTHON, new LanguageDockerProperties("python:3.11-slim", 1000),
+                        Language.JAVA, new LanguageDockerProperties("eclipse-temurin:21-jdk", 2000)
                 ),
                 5, "256m", 1.0, 64, 65536, workDirRoot.toString());
     }

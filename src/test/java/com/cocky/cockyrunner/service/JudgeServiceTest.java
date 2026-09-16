@@ -57,7 +57,8 @@ class JudgeServiceTest {
         return new DockerProperties(
                 Map.of(
                         Language.C, new LanguageDockerProperties("gcc:14", 100),
-                        Language.PYTHON, new LanguageDockerProperties("python:3.11-slim", 100)
+                        Language.PYTHON, new LanguageDockerProperties("python:3.11-slim", 100),
+                        Language.JAVA, new LanguageDockerProperties("eclipse-temurin:21-jdk", 100)
                 ),
                 5, "256m", 1.0, 64, 65536, "build/judge-work-test");
     }
@@ -216,7 +217,8 @@ class JudgeServiceTest {
         DockerProperties propertiesWithDistinctBudgets = new DockerProperties(
                 Map.of(
                         Language.C, new LanguageDockerProperties("gcc:14", 200),
-                        Language.PYTHON, new LanguageDockerProperties("python:3.11-slim", 5000)
+                        Language.PYTHON, new LanguageDockerProperties("python:3.11-slim", 5000),
+                        Language.JAVA, new LanguageDockerProperties("eclipse-temurin:21-jdk", 3000)
                 ),
                 5, "256m", 1.0, 64, 65536, "build/judge-work-test");
         LanguageSpecRegistry registryWithDistinctBudgets = new LanguageSpecRegistry(propertiesWithDistinctBudgets);

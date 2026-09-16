@@ -92,6 +92,14 @@ public final class LanguageSpecRegistry {
                     3.0,
                     startupBudgetMs
             );
+            case JAVA -> new LanguageSpec(
+                    image,
+                    "Main.java",
+                    List.of("javac", "-encoding", "UTF-8", "-d", "/work", "Main.java"),
+                    List.of("java", "-XX:+UseSerialGC", "-Xss8m", "-cp", "/work", "Main"),
+                    2.0,
+                    startupBudgetMs
+            );
         };
     }
 
