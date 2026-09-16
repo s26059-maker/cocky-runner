@@ -28,7 +28,9 @@ runner:
         startup-budget-ms: 1000
       java:
         image: eclipse-temurin:21-jdk
-        # 임시값, 캘리브레이션 전 - 다음 단계에서 실측 기반으로 확정 예정.
-        startup-budget-ms: 2000
+        # DockerRunner 경유 실측 (2026-09, 유휴 상태): 기동 오버헤드(total - user)
+        # 순차 60회 461~680ms, 동시 4개 20회 최대 1325ms.
+        # C와 차이는 노이즈 수준 — JVM 기동은 userWallMs에 포함되어 시간 제한이 커버함.
+        startup-budget-ms: 1500
 server:
   port: 18080
