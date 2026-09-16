@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import CodeMirror, { EditorView, Prec, keymap } from '@uiw/react-codemirror'
 import { python } from '@codemirror/lang-python'
 import { cpp } from '@codemirror/lang-cpp'
+import { java } from '@codemirror/lang-java'
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { tags as t } from '@lezer/highlight'
 import './CodeEditor.css'
@@ -14,6 +15,7 @@ import './CodeEditor.css'
 const LANGUAGE_EXTENSIONS = {
   C: [cpp()],
   PYTHON: [python()],
+  JAVA: [java()],
 } as const
 
 export type SupportedLanguage = keyof typeof LANGUAGE_EXTENSIONS
@@ -26,6 +28,7 @@ export const SUPPORTED_LANGUAGES: SupportedLanguage[] = Object.keys(LANGUAGE_EXT
 export const LANGUAGE_TEMPLATES: Record<SupportedLanguage, string> = {
   C: '#include <stdio.h>\n\nint main(void) {\n    \n    return 0;\n}\n',
   PYTHON: '',
+  JAVA: 'import java.util.Scanner;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n    }\n}\n',
 }
 
 // Chrome (background, gutters, caret, selection, active line) built entirely

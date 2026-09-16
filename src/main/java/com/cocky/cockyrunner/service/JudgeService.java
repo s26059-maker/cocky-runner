@@ -1,6 +1,5 @@
 package com.cocky.cockyrunner.service;
 
-import com.cocky.cockyrunner.config.DockerProperties;
 import com.cocky.cockyrunner.config.LanguageSpecRegistry;
 import com.cocky.cockyrunner.domain.JudgeResult;
 import com.cocky.cockyrunner.domain.Language;
@@ -35,15 +34,13 @@ public class JudgeService {
     private final ProblemRepository problemRepository;
     private final ExecutionService executionService;
     private final LanguageSpecRegistry languageSpecRegistry;
-    private final long startupBudgetMs;
     private final OutputComparator outputComparator = new OutputComparator();
 
     public JudgeService(ProblemRepository problemRepository, ExecutionService executionService,
-                         LanguageSpecRegistry languageSpecRegistry, DockerProperties dockerProperties) {
+                         LanguageSpecRegistry languageSpecRegistry) {
         this.problemRepository = problemRepository;
         this.executionService = executionService;
         this.languageSpecRegistry = languageSpecRegistry;
-        this.startupBudgetMs = dockerProperties.startupBudgetMs();
     }
 
     public JudgeResult judge(String problemId, Language language, String code) {
@@ -129,9 +126,9 @@ public class JudgeService {
      */
     private long resolveTimeoutMs(Problem problem, Language language) {
         LanguageSpec spec = languageSpecRegistry.get(language);
-        long timeoutMs = spec.resolvedTimeoutMs(problem.timeLimitMs(), startupBudgetMs);
+        long timeoutMs = spec.resolvedTimeoutMs(problem.timeLimitMs());
         log.info("resolved run timeout for problem {} language {}: {}ms (base {}ms x multiplier {} + {}ms startup budget)",
-                problem.id(), language, timeoutMs, problem.timeLimitMs(), spec.timeLimitMultiplier(), startupBudgetMs);
+                problem.id(), language, timeoutMs, problem.timeLimitMs(), spec.timeLimitMultiplier(), spec.startupBudgetMs());
         return timeoutMs;
     }
 

@@ -1,6 +1,7 @@
 package com.cocky.cockyrunner.service;
 
 import com.cocky.cockyrunner.config.DockerProperties;
+import com.cocky.cockyrunner.config.LanguageDockerProperties;
 import com.cocky.cockyrunner.config.LanguageSpecRegistry;
 import com.cocky.cockyrunner.domain.ExecutionStatus;
 import com.cocky.cockyrunner.domain.JudgeResult;
@@ -43,16 +44,23 @@ class JudgeServiceTest {
 
     @BeforeEach
     void setUp() {
-        // startupBudgetMs is 0 here so every exact-timeout assertion below (2000L,
-        // 1234L, 3000L, 1000L, ...) stays a bare multiplier result - the
-        // startupBudgetMs_isAddedToTheResolvedTimeout test covers the nonzero case.
-        judgeService = new JudgeService(problemRepository, executionService, languageSpecRegistry, testDockerProperties());
+        // Every test below that doesn't care about the exact resolved timeout stubs
+        // executionService.execute(...) with anyLong() rather than an exact eq(...),
+        // so this shared 100ms-per-language budget doesn't need to be threaded through
+        // them. Tests that DO assert on the resolved timeout account for it explicitly;
+        // resolvedTimeoutMs_usesEachLanguagesOwnStartupBudget below covers per-language
+        // budgets differing from one another.
+        judgeService = new JudgeService(problemRepository, executionService, languageSpecRegistry);
     }
 
     private static DockerProperties testDockerProperties() {
         return new DockerProperties(
-                Map.of("c", "gcc:14", "python", "python:3.11-slim"),
-                5, "256m", 1.0, 64, 65536, "build/judge-work-test", 0);
+                Map.of(
+                        Language.C, new LanguageDockerProperties("gcc:14", 100),
+                        Language.PYTHON, new LanguageDockerProperties("python:3.11-slim", 100),
+                        Language.JAVA, new LanguageDockerProperties("eclipse-temurin:21-jdk", 100)
+                ),
+                5, "256m", 1.0, 64, 65536, "build/judge-work-test");
     }
 
     /** A ready-to-run (compiled successfully, no infra failure) mock execution. */
@@ -75,7 +83,7 @@ class JudgeServiceTest {
         when(problemRepository.findById("p1")).thenReturn(Optional.of(problem));
         SubmissionExecution execution = readyExecution();
         stubPrepare(execution);
-        when(executionService.execute(eq(execution), anyString(), eq(2000L)))
+        when(executionService.execute(eq(execution), anyString(), anyLong()))
                 .thenReturn(success("out1", 100))
                 .thenReturn(success("out2", 300));
 
@@ -98,7 +106,7 @@ class JudgeServiceTest {
         when(problemRepository.findById("p1")).thenReturn(Optional.of(problem));
         SubmissionExecution execution = readyExecution();
         stubPrepare(execution);
-        when(executionService.execute(eq(execution), anyString(), eq(2000L)))
+        when(executionService.execute(eq(execution), anyString(), anyLong()))
                 .thenReturn(success("out1", 100))
                 .thenReturn(success("wrong-output", 150));
 
@@ -108,7 +116,7 @@ class JudgeServiceTest {
         assertThat(result.passedCount()).isEqualTo(1);
         assertThat(result.totalCount()).isEqualTo(3);
         assertThat(result.failedCaseNumber()).isEqualTo(2);
-        verify(executionService, times(2)).execute(eq(execution), anyString(), eq(2000L));
+        verify(executionService, times(2)).execute(eq(execution), anyString(), anyLong());
         verify(execution).close();
     }
 
@@ -133,7 +141,7 @@ class JudgeServiceTest {
         when(problemRepository.findById("p1")).thenReturn(Optional.of(problem));
         SubmissionExecution execution = readyExecution();
         stubPrepare(execution);
-        when(executionService.execute(eq(execution), anyString(), eq(2000L)))
+        when(executionService.execute(eq(execution), anyString(), anyLong()))
                 .thenReturn(ExecutionResponse.withoutTiming(status, "", "", exitCode, 500));
 
         JudgeResult result = judgeService.judge("p1", Language.C, "code");
@@ -165,8 +173,9 @@ class JudgeServiceTest {
         ArgumentCaptor<Long> timeoutCaptor = ArgumentCaptor.forClass(Long.class);
         verify(executionService).execute(eq(execution), stdinCaptor.capture(), timeoutCaptor.capture());
         assertThat(stdinCaptor.getValue()).isEqualTo("stdin-in");
-        // C's timeLimitMultiplier is 1.0, so the resolved timeout equals the problem's base limit.
-        assertThat(timeoutCaptor.getValue()).isEqualTo(1234L);
+        // C's timeLimitMultiplier is 1.0 and this fixture's C budget is 100ms, so the
+        // resolved timeout is the problem's base limit plus that budget.
+        assertThat(timeoutCaptor.getValue()).isEqualTo(1334L);
     }
 
     @Test
@@ -181,7 +190,9 @@ class JudgeServiceTest {
 
         judgeService.judge("p1", Language.PYTHON, "code");
 
-        verify(executionService).execute(eq(execution), anyString(), eq(3000L));
+        // PYTHON's timeLimitMultiplier is 3.0 and this fixture's PYTHON budget is 100ms:
+        // 1000*3 + 100 = 3100.
+        verify(executionService).execute(eq(execution), anyString(), eq(3100L));
     }
 
     @Test
@@ -196,16 +207,23 @@ class JudgeServiceTest {
 
         judgeService.judge("p1", Language.C, "code");
 
-        verify(executionService).execute(eq(execution), anyString(), eq(1000L));
+        // C's timeLimitMultiplier is 1.0 and this fixture's C budget is 100ms:
+        // 1000*1 + 100 = 1100.
+        verify(executionService).execute(eq(execution), anyString(), eq(1100L));
     }
 
     @Test
-    void startupBudgetMs_isAddedOnTopOfTheScaledTimeout() {
-        DockerProperties propertiesWithBudget = new DockerProperties(
-                Map.of("c", "gcc:14", "python", "python:3.11-slim"),
-                5, "256m", 1.0, 64, 65536, "build/judge-work-test", 500);
-        JudgeService judgeServiceWithBudget =
-                new JudgeService(problemRepository, executionService, languageSpecRegistry, propertiesWithBudget);
+    void resolvedTimeoutMs_usesEachLanguagesOwnStartupBudget() {
+        DockerProperties propertiesWithDistinctBudgets = new DockerProperties(
+                Map.of(
+                        Language.C, new LanguageDockerProperties("gcc:14", 200),
+                        Language.PYTHON, new LanguageDockerProperties("python:3.11-slim", 5000),
+                        Language.JAVA, new LanguageDockerProperties("eclipse-temurin:21-jdk", 3000)
+                ),
+                5, "256m", 1.0, 64, 65536, "build/judge-work-test");
+        LanguageSpecRegistry registryWithDistinctBudgets = new LanguageSpecRegistry(propertiesWithDistinctBudgets);
+        JudgeService judgeServiceWithDistinctBudgets =
+                new JudgeService(problemRepository, executionService, registryWithDistinctBudgets);
         TestCase tc = new TestCase("in", "out", true);
         Problem problem = new Problem("p1", "title", "desc", 1000, List.of(tc));
         when(problemRepository.findById("p1")).thenReturn(Optional.of(problem));
@@ -214,10 +232,15 @@ class JudgeServiceTest {
         when(executionService.execute(eq(execution), anyString(), anyLong()))
                 .thenReturn(success("out", 50));
 
-        judgeServiceWithBudget.judge("p1", Language.C, "code");
+        judgeServiceWithDistinctBudgets.judge("p1", Language.C, "code");
+        // C: multiplier 1.0, budget 200 -> 1000*1 + 200 = 1200ms.
+        verify(executionService).execute(eq(execution), anyString(), eq(1200L));
 
-        // C's multiplier is 1.0, so 1000ms base + 500ms budget = 1500ms.
-        verify(executionService).execute(eq(execution), anyString(), eq(1500L));
+        judgeServiceWithDistinctBudgets.judge("p1", Language.PYTHON, "code");
+        // PYTHON: multiplier 3.0, budget 5000 -> 1000*3 + 5000 = 8000ms - different from
+        // C's resolved timeout above, proving each language's own configured budget is
+        // used rather than one shared value.
+        verify(executionService).execute(eq(execution), anyString(), eq(8000L));
     }
 
     @Test
@@ -227,7 +250,7 @@ class JudgeServiceTest {
         when(problemRepository.findById("p1")).thenReturn(Optional.of(problem));
         SubmissionExecution execution = readyExecution();
         stubPrepare(execution);
-        when(executionService.execute(eq(execution), anyString(), eq(2000L)))
+        when(executionService.execute(eq(execution), anyString(), anyLong()))
                 .thenReturn(ExecutionResponse.withoutTiming(ExecutionStatus.RUNTIME_ERROR, "", "Traceback...\nValueError: invalid literal", 1, 50));
 
         JudgeResult result = judgeService.judge("p1", Language.C, "code");
@@ -243,7 +266,7 @@ class JudgeServiceTest {
         when(problemRepository.findById("p1")).thenReturn(Optional.of(problem));
         SubmissionExecution execution = readyExecution();
         stubPrepare(execution);
-        when(executionService.execute(eq(execution), anyString(), eq(2000L)))
+        when(executionService.execute(eq(execution), anyString(), anyLong()))
                 .thenReturn(ExecutionResponse.withoutTiming(ExecutionStatus.RUNTIME_ERROR, "", "some stderr the client must never see", 1, 50));
 
         JudgeResult result = judgeService.judge("p1", Language.C, "code");
@@ -259,7 +282,7 @@ class JudgeServiceTest {
         when(problemRepository.findById("p1")).thenReturn(Optional.of(problem));
         SubmissionExecution execution = readyExecution();
         stubPrepare(execution);
-        when(executionService.execute(eq(execution), anyString(), eq(2000L)))
+        when(executionService.execute(eq(execution), anyString(), anyLong()))
                 .thenReturn(ExecutionResponse.withoutTiming(ExecutionStatus.ERROR, "", "failed to run docker: boom", -1, 50));
 
         JudgeResult result = judgeService.judge("p1", Language.C, "code");
@@ -275,7 +298,7 @@ class JudgeServiceTest {
         when(problemRepository.findById("p1")).thenReturn(Optional.of(problem));
         SubmissionExecution execution = readyExecution();
         stubPrepare(execution);
-        when(executionService.execute(eq(execution), anyString(), eq(2000L)))
+        when(executionService.execute(eq(execution), anyString(), anyLong()))
                 .thenReturn(ExecutionResponse.withoutTiming(ExecutionStatus.SUCCESS, "wrong-output", "", 0, 50));
 
         JudgeResult result = judgeService.judge("p1", Language.C, "code");
@@ -291,7 +314,7 @@ class JudgeServiceTest {
         when(problemRepository.findById("p1")).thenReturn(Optional.of(problem));
         SubmissionExecution execution = readyExecution();
         stubPrepare(execution);
-        when(executionService.execute(eq(execution), anyString(), eq(2000L)))
+        when(executionService.execute(eq(execution), anyString(), anyLong()))
                 .thenReturn(ExecutionResponse.withoutTiming(ExecutionStatus.TIMEOUT, "", "", -1, 2000));
 
         JudgeResult result = judgeService.judge("p1", Language.C, "code");
@@ -308,7 +331,7 @@ class JudgeServiceTest {
         SubmissionExecution execution = readyExecution();
         stubPrepare(execution);
         String longStderr = "x".repeat(TextTruncator.MAX_LENGTH + 1000);
-        when(executionService.execute(eq(execution), anyString(), eq(2000L)))
+        when(executionService.execute(eq(execution), anyString(), anyLong()))
                 .thenReturn(ExecutionResponse.withoutTiming(ExecutionStatus.RUNTIME_ERROR, "", longStderr, 1, 50));
 
         JudgeResult result = judgeService.judge("p1", Language.C, "code");
@@ -391,7 +414,7 @@ class JudgeServiceTest {
         when(problemRepository.findById("p1")).thenReturn(Optional.of(problem));
         SubmissionExecution execution = readyExecution();
         stubPrepare(execution);
-        when(executionService.execute(eq(execution), anyString(), eq(2000L)))
+        when(executionService.execute(eq(execution), anyString(), anyLong()))
                 .thenReturn(success("out", 100));
 
         judgeService.judge("p1", Language.C, "code");
@@ -406,7 +429,7 @@ class JudgeServiceTest {
         when(problemRepository.findById("p1")).thenReturn(Optional.of(problem));
         SubmissionExecution execution = readyExecution();
         stubPrepare(execution);
-        when(executionService.execute(eq(execution), anyString(), eq(2000L)))
+        when(executionService.execute(eq(execution), anyString(), anyLong()))
                 .thenThrow(new RuntimeException("docker daemon unreachable"));
 
         assertThatThrownBy(() -> judgeService.judge("p1", Language.C, "code"))
@@ -472,7 +495,7 @@ class JudgeServiceTest {
         when(problemRepository.findById("p1")).thenReturn(Optional.of(problem));
         SubmissionExecution execution = readyExecution();
         stubPrepare(execution);
-        when(executionService.execute(eq(execution), anyString(), eq(2000L)))
+        when(executionService.execute(eq(execution), anyString(), anyLong()))
                 .thenReturn(successWithTiming("out1", 100, 60, 40))
                 .thenReturn(successWithTiming("out2", 300, 250, 200));
 
@@ -499,7 +522,7 @@ class JudgeServiceTest {
         when(problemRepository.findById("p1")).thenReturn(Optional.of(problem));
         SubmissionExecution execution = readyExecution();
         stubPrepare(execution);
-        when(executionService.execute(eq(execution), anyString(), eq(2000L)))
+        when(executionService.execute(eq(execution), anyString(), anyLong()))
                 .thenReturn(success("out1", 300))              // slower, but timing parse failed
                 .thenReturn(successWithTiming("out2", 100, 80, 50)); // faster, timing parsed fine
 
@@ -517,7 +540,7 @@ class JudgeServiceTest {
         when(problemRepository.findById("p1")).thenReturn(Optional.of(problem));
         SubmissionExecution execution = readyExecution();
         stubPrepare(execution);
-        when(executionService.execute(eq(execution), anyString(), eq(2000L)))
+        when(executionService.execute(eq(execution), anyString(), anyLong()))
                 .thenReturn(success("out", 100));
 
         JudgeResult result = judgeService.judge("p1", Language.C, "code");

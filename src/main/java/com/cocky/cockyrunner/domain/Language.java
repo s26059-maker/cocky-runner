@@ -11,5 +11,6 @@ package com.cocky.cockyrunner.domain;
  */
 public enum Language {
     C,
-    PYTHON
+    PYTHON,
+    JAVA
 }

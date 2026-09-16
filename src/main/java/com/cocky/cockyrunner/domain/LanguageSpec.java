@@ -21,13 +21,19 @@ import java.util.List;
  *                             {@link #compileCommand()} itself is never null
  * @param runCommand           command run inside the execution container
  * @param timeLimitMultiplier  multiplier applied to a problem's timeLimitMs for this language
+ * @param startupBudgetMs      this language's fixed slack, in milliseconds, added on top of
+ *                             the scaled time limit to account for container startup overhead
+ *                             (see {@link #resolvedTimeoutMs(int)}) - configured per language
+ *                             because startup cost varies by runtime (e.g. a JVM-based
+ *                             language needs more than a native one)
  */
 public record LanguageSpec(
         String dockerImage,
         String sourceFileName,
         List<String> compileCommand,
         List<String> runCommand,
-        double timeLimitMultiplier
+        double timeLimitMultiplier,
+        long startupBudgetMs
 ) {
     public LanguageSpec {
         compileCommand = compileCommand == null ? List.of() : List.copyOf(compileCommand);
@@ -41,8 +47,8 @@ public record LanguageSpec(
     /**
      * The run timeout for this language on a problem with the given base time
      * limit: {@code problemTimeLimitMs * timeLimitMultiplier}, rounded to the
-     * nearest millisecond, plus a fixed {@code startupBudgetMs} slack for
-     * container startup overhead. The single formula both
+     * nearest millisecond, plus this language's own {@code startupBudgetMs} slack
+     * for container startup overhead. The single formula both
      * {@link com.cocky.cockyrunner.service.JudgeService} (to compute the timeout
      * it actually runs with) and {@link com.cocky.cockyrunner.repository.JsonProblemRepository}
      * (to validate at startup that no problem/language combination would exceed
@@ -71,7 +77,7 @@ public record LanguageSpec(
      * only costs a bit of throughput and a slightly softer time limit. The
      * policy is to err generous.
      */
-    public long resolvedTimeoutMs(int problemTimeLimitMs, long startupBudgetMs) {
+    public long resolvedTimeoutMs(int problemTimeLimitMs) {
         return Math.round(problemTimeLimitMs * timeLimitMultiplier) + startupBudgetMs;
     }
 }
