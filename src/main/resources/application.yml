@@ -15,12 +15,16 @@ runner:
     pids-limit: 64
     max-output-bytes: 65536
     work-dir: build/judge-work
-    # 유휴 상태 순차 실행 기준 컨테이너 기동 오버헤드 368~521ms (2026-09, 60회 측정).
+    # startup-budget-ms: 컨테이너 기동 오버헤드 예산 (언어별).
+    # C/Python 유휴 상태 순차 실행 기준 368~521ms (2026-09, 60회 측정).
     # 동시 실행 시 꼬리가 더 길어지므로 여유를 크게 둔다.
     # 부족하면 오판정 TLE, 남으면 처리량 손해 — 비용이 비대칭이라 후자를 택한다.
-    startup-budget-ms: 1000
-    images:
-      c: gcc:14
-      python: python:3.11-slim
+    languages:
+      c:
+        image: gcc:14
+        startup-budget-ms: 1000
+      python:
+        image: python:3.11-slim
+        startup-budget-ms: 1000
 server:
   port: 18080

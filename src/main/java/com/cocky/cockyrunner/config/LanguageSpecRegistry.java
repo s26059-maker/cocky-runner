@@ -19,11 +19,12 @@ import org.springframework.stereotype.Component;
  * no framework or configuration dependency, and this class would have been the
  * one exception to that.
  *
- * <p>Docker image names come from {@link DockerProperties#images()} (environment-
- * configurable); everything else about a {@link LanguageSpec} is fixed in code.
- * Built once at construction time - if any {@link Language} has no configured
- * image, the constructor throws and, since this is a Spring bean, the application
- * fails to start rather than failing on the first grading request.
+ * <p>Per-language docker settings (image, startup budget) come from
+ * {@link DockerProperties#languages()} (environment-configurable); everything else
+ * about a {@link LanguageSpec} is fixed in code. Built once at construction time -
+ * if any {@link Language} has no configured entry, no image, or a non-positive
+ * startup budget, the constructor throws and, since this is a Spring bean, the
+ * application fails to start rather than failing on the first grading request.
  */
 @Component
 public final class LanguageSpecRegistry {
@@ -33,38 +34,63 @@ public final class LanguageSpecRegistry {
     public LanguageSpecRegistry(DockerProperties properties) {
         Map<Language, LanguageSpec> built = new EnumMap<>(Language.class);
         for (Language language : Language.values()) {
-            String image = resolveImage(properties, language);
-            built.put(language, buildSpec(language, image));
+            LanguageDockerProperties languageProperties = resolveLanguageProperties(properties, language);
+            String image = resolveImage(languageProperties, language);
+            long startupBudgetMs = resolveStartupBudgetMs(languageProperties, language);
+            built.put(language, buildSpec(language, image, startupBudgetMs));
         }
         this.specs = Map.copyOf(built);
     }
 
-    private static String resolveImage(DockerProperties properties, Language language) {
+    private static LanguageDockerProperties resolveLanguageProperties(DockerProperties properties, Language language) {
         String key = language.name().toLowerCase();
-        String image = properties.images() == null ? null : properties.images().get(key);
+        LanguageDockerProperties languageProperties =
+                properties.languages() == null ? null : properties.languages().get(language);
+        if (languageProperties == null) {
+            throw new IllegalStateException(
+                    "no docker configuration for language " + language
+                            + " - set runner.docker.languages." + key);
+        }
+        return languageProperties;
+    }
+
+    private static String resolveImage(LanguageDockerProperties languageProperties, Language language) {
+        String image = languageProperties.image();
         if (image == null || image.isBlank()) {
             throw new IllegalStateException(
                     "no docker image configured for language " + language
-                            + " - set runner.docker.images." + key);
+                            + " - set runner.docker.languages." + language.name().toLowerCase() + ".image");
         }
         return image;
     }
 
-    private static LanguageSpec buildSpec(Language language, String image) {
+    private static long resolveStartupBudgetMs(LanguageDockerProperties languageProperties, Language language) {
+        long startupBudgetMs = languageProperties.startupBudgetMs();
+        if (startupBudgetMs <= 0) {
+            throw new IllegalStateException(
+                    "runner.docker.languages." + language.name().toLowerCase() + ".startup-budget-ms"
+                            + " is missing or not positive: " + startupBudgetMs);
+        }
+        return startupBudgetMs;
+    }
+
+    private static LanguageSpec buildSpec(Language language, String image, long startupBudgetMs) {
         return switch (language) {
             case C -> new LanguageSpec(
                     image,
                     "main.c",
                     List.of("gcc", "-O2", "-std=c17", "-o", "main", "main.c", "-lm"),
                     List.of("./main"),
-                    1.0
+                    1.0,
+                    startupBudgetMs
             );
             case PYTHON -> new LanguageSpec(
                     image,
                     "main.py",
                     List.of(),
                     List.of("python3", "main.py"),
-                    3.0
+                    3.0,
+                    startupBudgetMs
             );
         };
     }

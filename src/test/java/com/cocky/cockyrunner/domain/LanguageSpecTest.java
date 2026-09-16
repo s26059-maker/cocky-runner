@@ -15,7 +15,7 @@ class LanguageSpecTest {
         List<String> mutableCompileCommand = new ArrayList<>(List.of("gcc", "-o", "main", "main.c"));
         List<String> mutableRunCommand = new ArrayList<>(List.of("./main"));
 
-        LanguageSpec spec = new LanguageSpec("gcc:14", "main.c", mutableCompileCommand, mutableRunCommand, 1.0);
+        LanguageSpec spec = new LanguageSpec("gcc:14", "main.c", mutableCompileCommand, mutableRunCommand, 1.0, 1000);
 
         mutableCompileCommand.add("--extra-flag");
         mutableRunCommand.add("--extra-arg");
@@ -26,7 +26,7 @@ class LanguageSpecTest {
 
     @Test
     void accessorLists_areThemselvesUnmodifiable() {
-        LanguageSpec spec = new LanguageSpec("gcc:14", "main.c", List.of("gcc"), List.of("./main"), 1.0);
+        LanguageSpec spec = new LanguageSpec("gcc:14", "main.c", List.of("gcc"), List.of("./main"), 1.0, 1000);
 
         assertThatThrownBy(() -> spec.compileCommand().add("x")).isInstanceOf(UnsupportedOperationException.class);
         assertThatThrownBy(() -> spec.runCommand().add("x")).isInstanceOf(UnsupportedOperationException.class);
@@ -34,7 +34,7 @@ class LanguageSpecTest {
 
     @Test
     void nullCompileCommand_isNormalizedToEmptyList() {
-        LanguageSpec spec = new LanguageSpec("python:3.11-slim", "main.py", null, List.of("python3", "main.py"), 3.0);
+        LanguageSpec spec = new LanguageSpec("python:3.11-slim", "main.py", null, List.of("python3", "main.py"), 3.0, 1000);
 
         assertThat(spec.compileCommand()).isEmpty();
         assertThat(spec.needsCompile()).isFalse();
@@ -42,22 +42,22 @@ class LanguageSpecTest {
 
     @Test
     void nonEmptyCompileCommand_needsCompileIsTrue() {
-        LanguageSpec spec = new LanguageSpec("gcc:14", "main.c", List.of("gcc", "main.c"), List.of("./main"), 1.0);
+        LanguageSpec spec = new LanguageSpec("gcc:14", "main.c", List.of("gcc", "main.c"), List.of("./main"), 1.0, 1000);
 
         assertThat(spec.needsCompile()).isTrue();
     }
 
     @Test
     void resolvedTimeoutMs_appliesMultiplierAndRounds() {
-        LanguageSpec spec = new LanguageSpec("python:3.11-slim", "main.py", null, List.of("python3", "main.py"), 3.0);
+        LanguageSpec spec = new LanguageSpec("python:3.11-slim", "main.py", null, List.of("python3", "main.py"), 3.0, 0);
 
-        assertThat(spec.resolvedTimeoutMs(2000, 0)).isEqualTo(6000L);
+        assertThat(spec.resolvedTimeoutMs(2000)).isEqualTo(6000L);
     }
 
     @Test
     void resolvedTimeoutMs_addsStartupBudgetOnTopOfTheScaledLimit() {
-        LanguageSpec spec = new LanguageSpec("python:3.11-slim", "main.py", null, List.of("python3", "main.py"), 3.0);
+        LanguageSpec spec = new LanguageSpec("python:3.11-slim", "main.py", null, List.of("python3", "main.py"), 3.0, 1000);
 
-        assertThat(spec.resolvedTimeoutMs(2000, 1000)).isEqualTo(7000L);
+        assertThat(spec.resolvedTimeoutMs(2000)).isEqualTo(7000L);
     }
 }

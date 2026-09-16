@@ -1,6 +1,5 @@
 package com.cocky.cockyrunner.repository;
 
-import com.cocky.cockyrunner.config.DockerProperties;
 import com.cocky.cockyrunner.config.LanguageSpecRegistry;
 import com.cocky.cockyrunner.domain.Language;
 import com.cocky.cockyrunner.domain.LanguageSpec;
@@ -41,10 +40,9 @@ public class JsonProblemRepository implements ProblemRepository {
      * startup - {@link LanguageSpecRegistry} has no notion of a "problem" and
      * validating there would mean reaching back out to this repository instead.
      */
-    public JsonProblemRepository(ObjectMapper objectMapper, LanguageSpecRegistry languageSpecRegistry,
-                                  DockerProperties dockerProperties) {
+    public JsonProblemRepository(ObjectMapper objectMapper, LanguageSpecRegistry languageSpecRegistry) {
         loadProblems(objectMapper);
-        validateTimeLimits(problems.values(), languageSpecRegistry, dockerProperties.startupBudgetMs());
+        validateTimeLimits(problems.values(), languageSpecRegistry);
     }
 
     /**
@@ -54,19 +52,12 @@ public class JsonProblemRepository implements ProblemRepository {
      * {@code classpath:problems/*.json} are shared with every other test that
      * builds a full Spring context, so a deliberately-over-limit fixture file
      * there would break those too.
-     *
-     * @param startupBudgetMs same value {@link com.cocky.cockyrunner.service.JudgeService}
-     *                        will add at run time (see {@link LanguageSpec#resolvedTimeoutMs}) -
-     *                        passed in here too so this startup check validates the same
-     *                        budget-inclusive value that will actually be used, not just the
-     *                        bare multiplier result.
      */
-    static void validateTimeLimits(Collection<Problem> problems, LanguageSpecRegistry languageSpecRegistry,
-                                    long startupBudgetMs) {
+    static void validateTimeLimits(Collection<Problem> problems, LanguageSpecRegistry languageSpecRegistry) {
         for (Problem problem : problems) {
             for (Language language : Language.values()) {
                 LanguageSpec spec = languageSpecRegistry.get(language);
-                long resolvedTimeoutMs = spec.resolvedTimeoutMs(problem.timeLimitMs(), startupBudgetMs);
+                long resolvedTimeoutMs = spec.resolvedTimeoutMs(problem.timeLimitMs());
                 if (resolvedTimeoutMs > DockerRunner.MAX_TIMEOUT_MS) {
                     throw new IllegalStateException(
                             "problem '" + problem.id() + "' exceeds the max run timeout for language " + language

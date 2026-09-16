@@ -1,6 +1,7 @@
 package com.cocky.cockyrunner.service;
 
 import com.cocky.cockyrunner.config.DockerProperties;
+import com.cocky.cockyrunner.config.LanguageDockerProperties;
 import com.cocky.cockyrunner.config.LanguageSpecRegistry;
 import com.cocky.cockyrunner.domain.ExecutionStatus;
 import com.cocky.cockyrunner.domain.Language;
@@ -32,7 +33,10 @@ class ExecutionServiceTest {
 
     private final DockerRunner dockerRunner = mock(DockerRunner.class);
     private final DockerProperties properties = new DockerProperties(
-            Map.of("c", "gcc:14", "python", "python:3.11-slim"), 5, "256m", 1.0, 64, 65536, "build/judge-work-test", 0);
+            Map.of(
+                    Language.C, new LanguageDockerProperties("gcc:14", 1000),
+                    Language.PYTHON, new LanguageDockerProperties("python:3.11-slim", 1000)
+            ), 5, "256m", 1.0, 64, 65536, "build/judge-work-test");
     private final LanguageSpecRegistry languageSpecRegistry = new LanguageSpecRegistry(properties);
     private final ExecutionService executionService = new ExecutionService(dockerRunner, languageSpecRegistry, properties);
 
