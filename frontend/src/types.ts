@@ -37,7 +37,12 @@ export interface SubmissionResponse {
   passedCount: number
   totalCount: number
   failedCaseNumber: number | null
+  // Host-measured, includes container startup - not the user program's time.
   maxExecutionTimeMs: number
+  // User program's own wall/CPU time (max across executed cases). null when it
+  // couldn't be measured for any executed case (TLE, CE, parse failure).
+  userWallMs: number | null
+  userCpuMs: number | null
   // For CE, always populated (a compile error is about the submitted code, not
   // test data). For RE/ERROR, only on a public sample test case; null otherwise
   // (hidden-case failures, WA, TLE) - see JudgeResult on the backend. Always
