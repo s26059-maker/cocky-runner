@@ -3,12 +3,13 @@ package com.cocky.cockyrunner.dto;
 import com.cocky.cockyrunner.domain.Verdict;
 
 /**
- * @param maxExecutionTimeMs host-measured wall time (includes container startup
- *                           overhead) of whichever test case took the longest
- * @param userWallMs         the user program's own wall time for that same test
- *                           case; null when it couldn't be determined
- * @param userCpuMs          the user program's own CPU time (user+sys) for that
- *                           same test case; null under the same conditions as
+ * @param maxExecutionTimeMs largest host-measured wall time (includes container
+ *                           startup overhead) across the executed test cases
+ * @param userWallMs         the largest user-program wall time across the executed
+ *                           test cases; null if it couldn't be determined for any
+ *                           executed case
+ * @param userCpuMs          the largest user-program CPU time (user+sys) across the
+ *                           executed test cases; null under the same conditions as
  *                           {@code userWallMs}
  */
 public record SubmissionResponse(

@@ -16,13 +16,14 @@ package com.cocky.cockyrunner.domain;
  * @param maxExecutionTimeMs host-measured wall time (includes container startup
  *                           overhead) of whichever test case took the longest - 0
  *                           when no test case ran (CE, infra failure)
- * @param userWallMs         the user program's own wall time for that same
- *                           slowest test case, as recovered from its {@code
- *                           .timing} file (see {@link com.cocky.cockyrunner.runner.TimingParser});
- *                           null when it couldn't be determined (including when
- *                           no test case ran)
- * @param userCpuMs          the user program's own CPU time (user+sys) for that
- *                           same test case; null under the same conditions as
+ * @param userWallMs         the largest user-program wall time across the executed
+ *                           test cases (maxed independently of the other timings),
+ *                           as recovered from each case's {@code .timing} file (see
+ *                           {@link com.cocky.cockyrunner.runner.TimingParser});
+ *                           null if it couldn't be determined for any executed
+ *                           case (including when no test case ran)
+ * @param userCpuMs          the largest user-program CPU time (user+sys) across the
+ *                           executed test cases; null under the same conditions as
  *                           {@code userWallMs}
  */
 public record JudgeResult(

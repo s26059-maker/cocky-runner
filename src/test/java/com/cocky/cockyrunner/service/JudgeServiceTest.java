@@ -488,7 +488,7 @@ class JudgeServiceTest {
     }
 
     @Test
-    void userWallAndCpuMs_areCarriedOverFromTheSlowestCase() {
+    void timings_areMaxedIndependently_whenTotalPeaksOnADifferentCaseThanUserWall() {
         TestCase tc1 = new TestCase("in1", "out1", true);
         TestCase tc2 = new TestCase("in2", "out2", false);
         Problem problem = new Problem("p1", "title", "desc", 2000, List.of(tc1, tc2));
@@ -496,26 +496,60 @@ class JudgeServiceTest {
         SubmissionExecution execution = readyExecution();
         stubPrepare(execution);
         when(executionService.execute(eq(execution), anyString(), anyLong()))
-                .thenReturn(successWithTiming("out1", 100, 60, 40))
-                .thenReturn(successWithTiming("out2", 300, 250, 200));
+                .thenReturn(successWithTiming("out1", 700, 60, 40))   // slowest total (startup-heavy)
+                .thenReturn(successWithTiming("out2", 300, 250, 200)); // slowest user program
 
         JudgeResult result = judgeService.judge("p1", Language.C, "code");
 
-        assertThat(result.maxExecutionTimeMs()).isEqualTo(300);
-        // Must come from the same (second) test case maxExecutionTimeMs came from,
-        // not e.g. the max of userWallMs/userCpuMs independently across cases.
+        assertThat(result.maxExecutionTimeMs()).isEqualTo(700);
         assertThat(result.userWallMs()).isEqualTo(250L);
         assertThat(result.userCpuMs()).isEqualTo(200L);
     }
 
     @Test
-    void aSlowerCaseWithFailedTimingParse_isNotOverwrittenByALaterShorterCase() {
-        // Regression for the hasSnapshot flag: userWallMs == null is also the
-        // normal shape of "this case's timing just didn't parse", not only "no
-        // snapshot taken yet" - a null-check alone would keep re-triggering on
-        // every later case (since the local userWallMs stays null) until a
-        // non-null one showed up, letting case 2's shorter, successfully-parsed
-        // time silently overwrite case 1's genuinely slower one.
+    void userWallAndUserCpu_areMaxedIndependentlyOfEachOther() {
+        TestCase tc1 = new TestCase("in1", "out1", true);
+        TestCase tc2 = new TestCase("in2", "out2", false);
+        Problem problem = new Problem("p1", "title", "desc", 2000, List.of(tc1, tc2));
+        when(problemRepository.findById("p1")).thenReturn(Optional.of(problem));
+        SubmissionExecution execution = readyExecution();
+        stubPrepare(execution);
+        when(executionService.execute(eq(execution), anyString(), anyLong()))
+                .thenReturn(successWithTiming("out1", 400, 300, 50))   // wall peak
+                .thenReturn(successWithTiming("out2", 500, 100, 90));  // cpu peak
+
+        JudgeResult result = judgeService.judge("p1", Language.C, "code");
+
+        assertThat(result.maxExecutionTimeMs()).isEqualTo(500);
+        assertThat(result.userWallMs()).isEqualTo(300L);
+        assertThat(result.userCpuMs()).isEqualTo(90L);
+    }
+
+    @Test
+    void oneCaseMissingUserWall_makesUserWallNull_butUserCpuStillMaxed() {
+        TestCase tc1 = new TestCase("in1", "out1", true);
+        TestCase tc2 = new TestCase("in2", "out2", false);
+        TestCase tc3 = new TestCase("in3", "out3", false);
+        Problem problem = new Problem("p1", "title", "desc", 2000, List.of(tc1, tc2, tc3));
+        when(problemRepository.findById("p1")).thenReturn(Optional.of(problem));
+        SubmissionExecution execution = readyExecution();
+        stubPrepare(execution);
+        when(executionService.execute(eq(execution), anyString(), anyLong()))
+                .thenReturn(successWithTiming("out1", 100, 60, 40))
+                .thenReturn(new ExecutionResponse(ExecutionStatus.SUCCESS, "out2", "", 0, 200, null, 70L))
+                .thenReturn(successWithTiming("out3", 150, 80, 55));
+
+        JudgeResult result = judgeService.judge("p1", Language.C, "code");
+
+        assertThat(result.userWallMs()).isNull();
+        assertThat(result.userCpuMs()).isEqualTo(70L);
+    }
+
+    @Test
+    void aSlowerCaseWithFailedTimingParse_isNotHiddenByALaterShorterCase() {
+        // Any case without a reading makes the overall value null, whichever
+        // order the cases ran in - a later successfully-parsed case must not
+        // paper over an earlier unmeasured one.
         TestCase tc1 = new TestCase("in1", "out1", true);
         TestCase tc2 = new TestCase("in2", "out2", false);
         Problem problem = new Problem("p1", "title", "desc", 2000, List.of(tc1, tc2));
