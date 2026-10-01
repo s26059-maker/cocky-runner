@@ -16,16 +16,20 @@ runner:
     max-output-bytes: 65536
     work-dir: build/judge-work
     # startup-budget-ms: 컨테이너 기동 오버헤드 예산 (언어별).
-    # C/Python 유휴 상태 순차 실행 기준 368~521ms (2026-09, 60회 측정).
-    # 동시 실행 시 꼬리가 더 길어지므로 여유를 크게 둔다.
+    # 산정 규칙: max(순차 max × 2, 동시 max) → 500 단위 올림.
+    # 지표: totalWallMs - userWallMs (DockerRunner 경유, 실행 단계만).
+    # 2026-10 재측정 (순차 60회 / 동시 4개 × 5라운드):
+    #   C      순차 353~575, 동시 876~1270 (judge0 정지 상태) → max(1150, 1270) → 1500
+    #   Python 순차 364~590, 동시 1051~1263 (judge0 가동 중)  → max(1180, 1263) → 1500
+    # 측정 시 judge0 등 다른 컨테이너 정지 필수 (켜 둔 채 재면 C 순차 max가 1108까지 튄다).
     # 부족하면 오판정 TLE, 남으면 처리량 손해 — 비용이 비대칭이라 후자를 택한다.
     languages:
       c:
         image: gcc:14
-        startup-budget-ms: 1000
+        startup-budget-ms: 1500
       python:
         image: python:3.11-slim
-        startup-budget-ms: 1000
+        startup-budget-ms: 1500
       java:
         image: eclipse-temurin:21-jdk
         # DockerRunner 경유 실측 (2026-09, 유휴 상태): 기동 오버헤드(total - user)
