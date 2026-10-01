@@ -22,6 +22,16 @@ const VERDICT_TONE: Record<Verdict, BadgeTone> = {
   ERROR: 'wa',
 }
 
+function timeTooltip(result: SubmissionResponse): string {
+  const total = `컨테이너 기동 포함 ${result.maxExecutionTimeMs}ms`
+  if (result.userCpuMs == null) {
+    return total
+  }
+  // CPU time is measured in 10ms ticks, so 0 means "under 10ms", not "unused".
+  const cpu = result.userCpuMs === 0 ? '<10ms' : `${result.userCpuMs}ms`
+  return `CPU ${cpu} · ${total}`
+}
+
 interface SubmissionResultProps {
   result: SubmissionResponse | null
   submitError: string | null
@@ -66,7 +76,13 @@ function SubmissionResult({ result, submitError, submitting = false }: Submissio
           {result.verdict} · {VERDICT_LABEL[result.verdict]}
         </Badge>
         <span className="submission-result__meta">
-          {result.passedCount}/{result.totalCount} · {result.maxExecutionTimeMs}ms
+          {result.passedCount}/{result.totalCount}
+          {result.userWallMs != null && (
+            <>
+              {' · '}
+              <span title={timeTooltip(result)}>{result.userWallMs}ms</span>
+            </>
+          )}
           {result.failedCaseNumber != null && ` · #${result.failedCaseNumber}`}
         </span>
       </div>
