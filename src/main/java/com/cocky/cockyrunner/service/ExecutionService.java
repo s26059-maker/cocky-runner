@@ -9,6 +9,7 @@ import com.cocky.cockyrunner.dto.ExecutionRequest;
 import com.cocky.cockyrunner.dto.ExecutionResponse;
 import com.cocky.cockyrunner.exception.InvalidExecutionRequestException;
 import com.cocky.cockyrunner.runner.DockerRunner;
+import com.cocky.cockyrunner.runner.RunOutcome;
 import com.cocky.cockyrunner.runner.SubmissionExecution;
 import com.cocky.cockyrunner.util.TextTruncator;
 import org.springframework.stereotype.Service;
@@ -81,6 +82,20 @@ public class ExecutionService {
         }
         validateTimeout(timeoutMs);
         return execution.run(stdin, timeoutMs);
+    }
+
+    /**
+     * Like {@link #execute(SubmissionExecution, String, long)} but with a per-call
+     * memory limit; also reports whether the container was OOM-killed. Used by the
+     * external judge/run API.
+     */
+    public RunOutcome executeLimited(SubmissionExecution execution, String stdin, long timeoutMs, long memoryLimitKb,
+                                     int maxStdoutBytes) {
+        if (execution.compilationFailed()) {
+            throw new IllegalStateException("cannot execute a test case: compilation failed for this submission");
+        }
+        validateTimeout(timeoutMs);
+        return execution.runLimited(stdin, timeoutMs, memoryLimitKb, maxStdoutBytes);
     }
 
     private void validateTimeout(long timeoutMs) {

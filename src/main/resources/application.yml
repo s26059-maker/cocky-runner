@@ -8,6 +8,9 @@ app:
       - http://localhost:5173
 
 runner:
+  api:
+    token: ${RUNNER_TOKEN:}   # 비어 있으면 앱 시작 실패
+    max-concurrent: ${RUNNER_MAX_CONCURRENT:4}
   docker:
     timeout-seconds: 5
     memory: 256m
@@ -37,4 +40,5 @@ runner:
         # C와 차이는 노이즈 수준 — JVM 기동은 userWallMs에 포함되어 시간 제한이 커버함.
         startup-budget-ms: 1500
 server:
+
   port: 18080

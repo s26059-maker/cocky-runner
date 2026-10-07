@@ -44,6 +44,10 @@ class OutputCollector implements Runnable {
         }
     }
 
+    boolean truncated() {
+        return truncated;
+    }
+
     String output() {
         String text = buffer.toString(StandardCharsets.UTF_8);
         return truncated ? text + "\n... (truncated)" : text;

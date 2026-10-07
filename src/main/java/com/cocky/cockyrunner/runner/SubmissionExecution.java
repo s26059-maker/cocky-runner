@@ -53,6 +53,15 @@ public interface SubmissionExecution extends AutoCloseable {
 
     ExecutionResponse run(String stdin, long timeoutMs);
 
+    /**
+     * Runs with a per-call memory limit and reports whether the container was
+     * OOM-killed. The default ignores the limit and never reports OOM, so
+     * implementations that don't support it keep working unchanged.
+     */
+    default RunOutcome runLimited(String stdin, long timeoutMs, long memoryLimitKb, int maxStdoutBytes) {
+        return new RunOutcome(run(stdin, timeoutMs), false);
+    }
+
     @Override
     void close();
 }
