@@ -136,7 +136,25 @@ public class DockerRunner {
      * a workspace that {@link #prepareSubmission(LanguageSpec, String)} set up first.
      */
     ExecutionResponse run(Path workDir, LanguageSpec spec, String stdin, long timeoutMs) {
+        return runInternal(workDir, spec, stdin, timeoutMs, null, properties.maxOutputBytes()).response();
+    }
+
+    /**
+     * Like {@link #run} but with a per-call memory limit and OOM-kill detection, for
+     * the external judge/run API. The container is started without {@code --rm} (so
+     * {@code State.OOMKilled} can be inspected after it exits) and removed explicitly
+     * afterwards; swap is disabled so the limit is a real ceiling.
+     */
+    RunOutcome runLimited(Path workDir, LanguageSpec spec, String stdin, long timeoutMs, long memoryLimitKb,
+                         int maxStdoutBytes) {
+        return runInternal(workDir, spec, stdin, timeoutMs, memoryLimitKb, maxStdoutBytes);
+    }
+
+    /** @param memoryLimitKb null = legacy behaviour (default memory, {@code --rm}, no OOM detection) */
+    private RunOutcome runInternal(Path workDir, LanguageSpec spec, String stdin, long timeoutMs, Long memoryLimitKb,
+                                   int maxStdoutBytes) {
         validateTimeout(timeoutMs);
+        boolean limited = memoryLimitKb != null;
         String containerName = "run-" + UUID.randomUUID();
         // Declared (with a real value) here rather than literally inside the try
         // below, only because a variable assigned inside a try block isn't visible
@@ -163,12 +181,15 @@ public class DockerRunner {
             // Not read-only: the wrapper needs to write /work/.timing. The compile
             // step (below) still mounts read-write for its own reasons (writing the
             // compiled binary) and is untouched by this - it never runs the wrapper.
-            List<String> command = buildContainerCommand(containerName, workDir, spec.dockerImage(), wrappedCommand, false);
+            List<String> command = limited
+                    ? buildContainerCommand(containerName, workDir, spec.dockerImage(), wrappedCommand, false,
+                            memoryLimitKb + "k", false)
+                    : buildContainerCommand(containerName, workDir, spec.dockerImage(), wrappedCommand, false);
             Process process = new ProcessBuilder(command).start();
 
             writeStdin(process, stdin);
 
-            OutputCollector stdoutCollector = new OutputCollector(process.getInputStream(), properties.maxOutputBytes());
+            OutputCollector stdoutCollector = new OutputCollector(process.getInputStream(), maxStdoutBytes);
             OutputCollector stderrCollector = new OutputCollector(process.getErrorStream(), properties.maxOutputBytes());
             Thread stdoutThread = startDrainThread(stdoutCollector, "docker-stdout-" + containerName);
             Thread stderrThread = startDrainThread(stderrCollector, "docker-stderr-" + containerName);
@@ -185,8 +206,8 @@ public class DockerRunner {
                 // is genuinely partial - parsing it would log a warning on every
                 // single TLE. A timeout with no reliable user-time breakdown is
                 // exactly the unmeasured case, same as no file at all.
-                return ExecutionResponse.withoutTiming(ExecutionStatus.TIMEOUT, stdoutCollector.output(), stderrCollector.output(),
-                        -1, elapsedMs(startNanos));
+                return new RunOutcome(ExecutionResponse.withoutTiming(ExecutionStatus.TIMEOUT, stdoutCollector.output(),
+                        stderrCollector.output(), -1, elapsedMs(startNanos)), false);
             }
 
             stdoutThread.join();
@@ -199,13 +220,15 @@ public class DockerRunner {
 
             if (exitCode == DOCKER_CLI_FAILURE_EXIT_CODE) {
                 log.error("docker run failed for container {}: {}", containerName, stderr);
-                return new ExecutionResponse(ExecutionStatus.ERROR, stdout, stderr, exitCode,
-                        timing.totalWallMs(), timing.userWallMs(), timing.userCpuMs());
+                return new RunOutcome(new ExecutionResponse(ExecutionStatus.ERROR, stdout, stderr, exitCode,
+                        timing.totalWallMs(), timing.userWallMs(), timing.userCpuMs()), false);
             }
 
             ExecutionStatus status = exitCode == 0 ? ExecutionStatus.SUCCESS : ExecutionStatus.RUNTIME_ERROR;
-            return new ExecutionResponse(status, stdout, stderr, exitCode,
-                    timing.totalWallMs(), timing.userWallMs(), timing.userCpuMs());
+            boolean oomKilled = limited && exitCode != 0 && inspectOomKilled(containerName);
+            return new RunOutcome(new ExecutionResponse(status, stdout, stderr, exitCode,
+                    timing.totalWallMs(), timing.userWallMs(), timing.userCpuMs()), oomKilled,
+                    stdoutCollector.truncated());
 
         } catch (IOException e) {
             // Covers both a docker process that never launched and clearTiming()
@@ -214,11 +237,50 @@ public class DockerRunner {
             // run itself may never have started) so it's not worth distinguishing
             // further.
             log.error("failed to prepare workspace or launch docker process", e);
-            return ExecutionResponse.withoutTiming(ExecutionStatus.ERROR, "", "failed to run docker: " + e.getMessage(),
-                    -1, elapsedMs(startNanos));
+            return new RunOutcome(ExecutionResponse.withoutTiming(ExecutionStatus.ERROR, "", "failed to run docker: " + e.getMessage(),
+                    -1, elapsedMs(startNanos)), false);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("execution was interrupted", e);
+        } finally {
+            if (limited) {
+                removeContainer(containerName);
+            }
+        }
+    }
+
+    /**
+     * Whether Docker recorded an OOM kill for the (already exited) container.
+     * Returns false when it can't be determined - callers then treat the failure
+     * as an ordinary runtime error.
+     */
+    private boolean inspectOomKilled(String containerName) {
+        try {
+            Process process = new ProcessBuilder("docker", "inspect", "-f", "{{.State.OOMKilled}}", containerName)
+                    .redirectErrorStream(true).start();
+            String out = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
+            if (!process.waitFor(5, TimeUnit.SECONDS)) {
+                process.destroyForcibly();
+                return false;
+            }
+            return process.exitValue() == 0 && "true".equals(out);
+        } catch (IOException e) {
+            log.warn("failed to inspect container {}", containerName, e);
+            return false;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    private void removeContainer(String containerName) {
+        try {
+            new ProcessBuilder("docker", "rm", "-f", containerName).start().waitFor(10, TimeUnit.SECONDS);
+        } catch (IOException e) {
+            log.warn("failed to remove container {}", containerName, e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("interrupted while removing container {}", containerName, e);
         }
     }
 
@@ -314,13 +376,24 @@ public class DockerRunner {
 
     private List<String> buildContainerCommand(String containerName, Path workDir, String image, List<String> command,
                                                  boolean readOnlyMount) {
+        return buildContainerCommand(containerName, workDir, image, command, readOnlyMount, properties.memory(), true);
+    }
+
+    private List<String> buildContainerCommand(String containerName, Path workDir, String image, List<String> command,
+                                                 boolean readOnlyMount, String memory, boolean autoRemove) {
         List<String> full = new ArrayList<>();
         full.add("docker");
         full.add("run");
-        full.add("--rm");
+        if (autoRemove) {
+            full.add("--rm");
+        }
         full.add("-i");
         full.add("--network=none");
-        full.add("--memory=" + properties.memory());
+        full.add("--memory=" + memory);
+        if (!autoRemove) {
+            // per-call limit: no swap, so exceeding it really OOM-kills the program
+            full.add("--memory-swap=" + memory);
+        }
         full.add("--cpus=" + properties.cpus());
         full.add("--pids-limit=" + properties.pidsLimit());
         full.add("--name");

@@ -90,6 +90,17 @@ final class DockerSubmissionExecution implements SubmissionExecution {
     }
 
     @Override
+    public RunOutcome runLimited(String stdin, long timeoutMs, long memoryLimitKb, int maxStdoutBytes) {
+        if (infraFailureResponse != null) {
+            return new RunOutcome(infraFailureResponse, false);
+        }
+        if (compilationFailed) {
+            throw new IllegalStateException("cannot run a test case: compilation failed for this submission");
+        }
+        return runner.runLimited(workDir, spec, stdin, timeoutMs, memoryLimitKb, maxStdoutBytes);
+    }
+
+    @Override
     public void close() {
         runner.cleanup(workDir);
     }

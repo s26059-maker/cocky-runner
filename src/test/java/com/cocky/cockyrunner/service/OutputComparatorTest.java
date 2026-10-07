@@ -29,6 +29,23 @@ class OutputComparatorTest {
     }
 
     @Test
+    void trailingBlankLinesAreIgnored() {
+        assertThat(comparator.match("a\nb", "a\nb\n\n\n")).isTrue();
+        assertThat(comparator.match("a\nb\n\n", "a\nb")).isTrue();
+        assertThat(comparator.match("a\n  \n", "a")).isTrue();
+    }
+
+    @Test
+    void interiorBlankLinesAreSignificant() {
+        assertThat(comparator.match("a\n\nb", "a\nb")).isFalse();
+    }
+
+    @Test
+    void crlfWithTrailingSpacesAndBlankLinesCombined() {
+        assertThat(comparator.match("a\nb", "a  \r\nb \r\n\r\n")).isTrue();
+    }
+
+    @Test
     void leadingWhitespaceIsSignificant() {
         assertThat(comparator.match("  a", "a")).isFalse();
     }
