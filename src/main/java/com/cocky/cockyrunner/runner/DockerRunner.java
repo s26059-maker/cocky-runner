@@ -11,6 +11,7 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -59,6 +60,19 @@ public class DockerRunner {
      */
     public static final long MAX_TIMEOUT_MS = 30_000L;
 
+    /** Unprivileged uid:gid every sandbox container runs as (no passwd entry needed). */
+    static final String SANDBOX_USER = "10001:10001";
+    /** Size cap of the only writable scratch area besides the workspace (counts against --memory). */
+    static final String TMPFS_SIZE = "64m";
+    /** RLIMIT_FSIZE: largest single file a sandboxed process may write. */
+    static final long MAX_FILE_BYTES = 16L * 1024 * 1024;
+    /**
+     * Cap on the total size of a workspace while a program runs. A bind mount can't take
+     * --storage-opt, so the host polls the directory and kills the container above this.
+     */
+    static final long MAX_WORKSPACE_BYTES = 64L * 1024 * 1024;
+    private static final long DISK_POLL_MS = 100L;
+
     private final DockerProperties properties;
     private final Path workDirRoot;
 
@@ -98,6 +112,11 @@ public class DockerRunner {
         Path workDir;
         try {
             workDir = Files.createDirectory(workDirRoot.resolve(UUID.randomUUID().toString()));
+            // The container runs as an unprivileged uid that is not the owner of this
+            // directory, so it must be world-writable for .timing / .class / binaries.
+            // Skipped where POSIX permissions don't exist (Windows hosts; Docker Desktop
+            // bind mounts are writable for any container uid there).
+            makeWorldWritable(workDir);
             Files.writeString(workDir.resolve(spec.sourceFileName()), code, StandardCharsets.UTF_8);
             // Written once per submission, alongside the source - every run() call
             // below invokes this rather than the user's program directly, so it must
@@ -124,6 +143,47 @@ public class DockerRunner {
             }
         }
         return DockerSubmissionExecution.ready(this, workDir, spec);
+    }
+
+    private static void makeWorldWritable(Path dir) throws IOException {
+        try {
+            Files.setPosixFilePermissions(dir, PosixFilePermissions.fromString("rwxrwxrwx"));
+        } catch (UnsupportedOperationException e) {
+            // non-POSIX filesystem: nothing to do
+        }
+    }
+
+    private static long directorySize(Path dir) {
+        try (Stream<Path> paths = Files.walk(dir)) {
+            return paths.mapToLong(path -> {
+                try {
+                    return Files.isRegularFile(path) ? Files.size(path) : 0L;
+                } catch (IOException e) {
+                    return 0L;
+                }
+            }).sum();
+        } catch (IOException | UncheckedIOException e) {
+            return 0L;
+        }
+    }
+
+    private enum WaitResult { EXITED, TIMEOUT, DISK_EXCEEDED }
+
+    /** Waits for the process like waitFor(timeout), but also polls the workspace size. */
+    private WaitResult awaitExit(Process process, Path workDir, long timeoutMs) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
+        while (true) {
+            long remainingMs = TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime());
+            if (remainingMs <= 0) {
+                return process.waitFor(0, TimeUnit.MILLISECONDS) ? WaitResult.EXITED : WaitResult.TIMEOUT;
+            }
+            if (process.waitFor(Math.min(DISK_POLL_MS, remainingMs), TimeUnit.MILLISECONDS)) {
+                return WaitResult.EXITED;
+            }
+            if (directorySize(workDir) > MAX_WORKSPACE_BYTES) {
+                return WaitResult.DISK_EXCEEDED;
+            }
+        }
     }
 
     private ExecutionResponse errorResponse(String message) {
@@ -194,12 +254,17 @@ public class DockerRunner {
             Thread stdoutThread = startDrainThread(stdoutCollector, "docker-stdout-" + containerName);
             Thread stderrThread = startDrainThread(stderrCollector, "docker-stderr-" + containerName);
 
-            boolean finished = process.waitFor(timeoutMs, TimeUnit.MILLISECONDS);
-            if (!finished) {
+            WaitResult waitResult = awaitExit(process, workDir, timeoutMs);
+            if (waitResult != WaitResult.EXITED) {
                 process.destroyForcibly();
                 killContainer(containerName);
                 stdoutThread.join(TimeUnit.SECONDS.toMillis(5));
                 stderrThread.join(TimeUnit.SECONDS.toMillis(5));
+                if (waitResult == WaitResult.DISK_EXCEEDED) {
+                    log.warn("workspace {} exceeded {} bytes, container {} killed", workDir, MAX_WORKSPACE_BYTES, containerName);
+                    return new RunOutcome(ExecutionResponse.withoutTiming(ExecutionStatus.RUNTIME_ERROR,
+                            stdoutCollector.output(), "workspace disk quota exceeded", -1, elapsedMs(startNanos)), false);
+                }
                 // Deliberately not parsed via TimingParser: on a real timeout the
                 // wrapper wrote START/BEFORE and then never got to run AFTER/END (the
                 // user program itself is what didn't finish), so the file exists but
@@ -390,10 +455,15 @@ public class DockerRunner {
         full.add("-i");
         full.add("--network=none");
         full.add("--memory=" + memory);
-        if (!autoRemove) {
-            // per-call limit: no swap, so exceeding it really OOM-kills the program
-            full.add("--memory-swap=" + memory);
-        }
+        // no swap, so exceeding the limit really OOM-kills the program
+        full.add("--memory-swap=" + memory);
+        full.add("--user=" + SANDBOX_USER);
+        full.add("--cap-drop=ALL");
+        full.add("--security-opt=no-new-privileges");
+        full.add("--read-only");
+        full.add("--tmpfs=/tmp:rw,noexec,nosuid,size=" + TMPFS_SIZE);
+        full.add("--env=HOME=/tmp");
+        full.add("--ulimit=fsize=" + MAX_FILE_BYTES + ":" + MAX_FILE_BYTES);
         full.add("--cpus=" + properties.cpus());
         full.add("--pids-limit=" + properties.pidsLimit());
         full.add("--name");

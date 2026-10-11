@@ -1,4 +1,5 @@
 #!/bin/sh
+umask 000
 T=/work/.timing
 : > "$T"
 echo "START $(date +%s%N)" >> "$T"
