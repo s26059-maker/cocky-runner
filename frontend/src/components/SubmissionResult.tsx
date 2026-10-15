@@ -1,26 +1,7 @@
-import type { SubmissionResponse, Verdict } from '../types'
-import Badge, { type BadgeTone } from './ui/Badge'
+import type { SubmissionResponse } from '../types'
+import Badge from './ui/Badge'
+import { VERDICT_LABEL, VERDICT_TONE } from './verdictDisplay'
 import './SubmissionResult.css'
-
-const VERDICT_LABEL: Record<Verdict, string> = {
-  AC: '정답',
-  WA: '오답',
-  TLE: '시간 초과',
-  RE: '런타임 에러',
-  CE: '컴파일 에러',
-  ERROR: '채점 실패',
-}
-
-// ERROR has no dedicated verdict color of its own (it's an infra failure, not
-// a judged outcome) - reuses the WA tone since it's a failure the same way.
-const VERDICT_TONE: Record<Verdict, BadgeTone> = {
-  AC: 'ac',
-  WA: 'wa',
-  TLE: 'tle',
-  RE: 're',
-  CE: 'ce',
-  ERROR: 'wa',
-}
 
 function timeTooltip(result: SubmissionResponse): string {
   const total = `컨테이너 기동 포함 ${result.maxExecutionTimeMs}ms`

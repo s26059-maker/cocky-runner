@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { ChangeEvent, KeyboardEvent } from 'react'
 import { Link, useParams } from 'react-router'
 import { getProblem } from '../api/problems'
-import { submitSolution } from '../api/submissions'
+import { runSamples, submitSolution } from '../api/submissions'
 import { runCode } from '../api/executions'
 import { ApiError, toErrorMessage } from '../api/client'
 import { useAsyncData } from '../hooks/useAsyncData'
@@ -16,10 +16,16 @@ import CodeEditor, {
 } from '../components/CodeEditor'
 import SubmissionResult from '../components/SubmissionResult'
 import ExecutionResult from '../components/ExecutionResult'
+import SampleResult from '../components/SampleResult'
 import Panel from '../components/ui/Panel'
 import Button from '../components/ui/Button'
 import Select from '../components/ui/Select'
-import { MAX_SOURCE_LENGTH, type ExecutionResponse, type SubmissionResponse } from '../types'
+import {
+  MAX_SOURCE_LENGTH,
+  type ExecutionResponse,
+  type SampleRunResponse,
+  type SubmissionResponse,
+} from '../types'
 import './ProblemDetailPage.css'
 
 const LANGUAGE_LABELS: Record<SupportedLanguage, string> = {
@@ -32,11 +38,12 @@ const IS_MAC = /Mac|iPhone|iPad|iPod/.test(navigator.userAgent)
 const RUN_SHORTCUT_LABEL = IS_MAC ? '⌘Enter' : 'Ctrl+Enter'
 const SUBMIT_SHORTCUT_LABEL = IS_MAC ? '⌘⇧Enter' : 'Ctrl+Shift+Enter'
 
-type ResultTab = 'input' | 'run' | 'submit'
+type ResultTab = 'input' | 'run' | 'samples' | 'submit'
 
 const RESULT_TABS: { id: ResultTab; label: string }[] = [
   { id: 'input', label: '입력' },
   { id: 'run', label: '실행 결과' },
+  { id: 'samples', label: '예제 결과' },
   { id: 'submit', label: '제출 결과' },
 ]
 
@@ -60,15 +67,43 @@ function ProblemDetailPage() {
   const [running, setRunning] = useState(false)
   const [runResult, setRunResult] = useState<ExecutionResponse | null>(null)
   const [runError, setRunError] = useState<string | null>(null)
+  const [runningSamples, setRunningSamples] = useState(false)
+  const [sampleResult, setSampleResult] = useState<SampleRunResponse | null>(null)
+  const [sampleError, setSampleError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<SubmissionResponse | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
   const isBlank = !code.trim()
   const isTooLong = code.length > MAX_SOURCE_LENGTH
-  const busy = running || submitting
+  const busy = running || runningSamples || submitting
   const canRun = !isBlank && !isTooLong && !busy
+  const canRunSamples = canRun
   const canSubmit = canRun
+
+  async function handleRunSamples() {
+    if (!id || !canRunSamples) {
+      return
+    }
+
+    setActiveTab('samples')
+    setRunningSamples(true)
+    setSampleResult(null)
+    setSampleError(null)
+
+    try {
+      setSampleResult(await runSamples(id, { language, code }))
+    } catch (err) {
+      setSampleError(toErrorMessage(err))
+    } finally {
+      setRunningSamples(false)
+    }
+  }
+
+  function handleSendInput(input: string) {
+    setStdin(input)
+    setActiveTab('input')
+  }
 
   async function handleRun() {
     if (!canRun) {
@@ -264,6 +299,9 @@ function ProblemDetailPage() {
                 {running ? '실행 중...' : '실행'}
                 <span className="solution-panel__shortcut-hint">{RUN_SHORTCUT_LABEL}</span>
               </Button>
+              <Button variant="ghost" onClick={handleRunSamples} disabled={!canRunSamples}>
+                {runningSamples ? '예제 실행 중...' : '예제 실행'}
+              </Button>
               <Button
                 onClick={handleSubmit}
                 disabled={!canSubmit}
@@ -310,6 +348,14 @@ function ProblemDetailPage() {
                 )}
                 {activeTab === 'run' && (
                   <ExecutionResult result={runResult} runError={runError} running={running} />
+                )}
+                {activeTab === 'samples' && (
+                  <SampleResult
+                    result={sampleResult}
+                    sampleError={sampleError}
+                    running={runningSamples}
+                    onSendInput={handleSendInput}
+                  />
                 )}
                 {activeTab === 'submit' && (
                   <SubmissionResult result={result} submitError={submitError} submitting={submitting} />
