@@ -12,7 +12,10 @@ import com.cocky.cockyrunner.dto.ExecutionResponse;
 import com.cocky.cockyrunner.exception.ProblemNotFoundException;
 import com.cocky.cockyrunner.repository.ProblemRepository;
 import com.cocky.cockyrunner.runner.SubmissionExecution;
+import com.cocky.cockyrunner.diagnostic.Diagnostic;
+import com.cocky.cockyrunner.diagnostic.Diagnostics;
 import com.cocky.cockyrunner.util.TextTruncator;
+import com.cocky.cockyrunner.util.WorkPathScrubber;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -53,8 +56,11 @@ public class JudgeService {
 
         try (SubmissionExecution execution = executionService.prepare(language, code)) {
             if (execution.compilationFailed()) {
-                String errorOutput = TextTruncator.truncate(execution.compileErrorOutput());
-                return JudgeResult.withoutTiming(Verdict.CE, 0, problem.testCases().size(), null, 0, errorOutput);
+                // parsed from the raw output, before the scrub/truncate the client sees
+                String rawCompileError = execution.compileErrorOutput();
+                return new JudgeResult(Verdict.CE, 0, problem.testCases().size(), null, 0,
+                        WorkPathScrubber.scrubAndTruncate(rawCompileError), null, null,
+                        Diagnostics.parse(language, rawCompileError, code));
             }
             if (execution.infrastructureFailed()) {
                 // Infra failure happened before any test case was picked, so there's no
@@ -68,7 +74,7 @@ public class JudgeService {
                         problemId, language, problem.testCases().size(), execution.infrastructureFailureDetail());
                 return JudgeResult.withoutTiming(Verdict.ERROR, 0, problem.testCases().size(), null, 0, null);
             }
-            return runTestCases(problem, execution, timeoutMs);
+            return runTestCases(problem, execution, timeoutMs, language, code);
         }
     }
 
@@ -93,7 +99,9 @@ public class JudgeService {
 
         try (SubmissionExecution execution = executionService.prepare(language, code)) {
             if (execution.compilationFailed()) {
-                return new SampleRunResult(TextTruncator.truncate(execution.compileErrorOutput()), List.of());
+                String rawCompileError = execution.compileErrorOutput();
+                return new SampleRunResult(WorkPathScrubber.scrubAndTruncate(rawCompileError), List.of(),
+                        Diagnostics.parse(language, rawCompileError, code));
             }
             if (execution.infrastructureFailed()) {
                 log.error("infrastructure failure preparing sample run for problem {} language {}: {}",
@@ -108,19 +116,25 @@ public class JudgeService {
             }
 
             List<SampleRunResult.SampleCaseResult> results = new ArrayList<>();
+            List<Diagnostic> diagnostics = List.of();
             for (int i = 0; i < samples.size(); i++) {
                 TestCase sample = samples.get(i);
                 ExecutionResponse response = executionService.execute(execution, sample.input(), timeoutMs);
+                Verdict verdict = judgeCase(sample, response);
+                if (verdict == Verdict.RE && diagnostics.isEmpty()) {
+                    // first RE case only, parsed from the untruncated stderr
+                    diagnostics = Diagnostics.parse(language, response.stderr(), code);
+                }
                 results.add(new SampleRunResult.SampleCaseResult(
                         i + 1,
                         sample.input(),
                         sample.expectedOutput(),
                         TextTruncator.truncate(response.stdout()),
-                        judgeCase(sample, response),
-                        blankToNull(TextTruncator.truncate(response.stderr())),
+                        verdict,
+                        blankToNull(WorkPathScrubber.scrubAndTruncate(response.stderr())),
                         response.userWallMs()));
             }
-            return new SampleRunResult(null, results);
+            return new SampleRunResult(null, results, diagnostics);
         }
     }
 
@@ -132,7 +146,8 @@ public class JudgeService {
      * Runs every test case against an already-prepared (and, if needed, already
      * compiled) submission, stopping at the first non-AC result.
      */
-    private JudgeResult runTestCases(Problem problem, SubmissionExecution execution, long timeoutMs) {
+    private JudgeResult runTestCases(Problem problem, SubmissionExecution execution, long timeoutMs,
+                                     Language language, String code) {
         List<TestCase> testCases = problem.testCases();
         int passedCount = 0;
         long maxExecutionTimeMs = 0;
@@ -154,8 +169,12 @@ public class JudgeService {
             Verdict caseVerdict = judgeCase(testCase, response);
             if (caseVerdict != Verdict.AC) {
                 String errorOutput = extractErrorOutput(caseVerdict, testCase, response);
+                // diagnostics follow errorOutput's exposure rule: only a sample-case RE carries any
+                List<Diagnostic> diagnostics = errorOutput != null && caseVerdict == Verdict.RE
+                        ? Diagnostics.parse(language, response.stderr(), code)
+                        : List.of();
                 return new JudgeResult(caseVerdict, passedCount, testCases.size(), i + 1, maxExecutionTimeMs,
-                        errorOutput, userWall.result(), userCpu.result());
+                        errorOutput, userWall.result(), userCpu.result(), diagnostics);
             }
             passedCount++;
         }
@@ -235,6 +254,6 @@ public class JudgeService {
         if (stderr == null || stderr.isBlank()) {
             return null;
         }
-        return TextTruncator.truncate(stderr);
+        return WorkPathScrubber.scrubAndTruncate(stderr);
     }
 }

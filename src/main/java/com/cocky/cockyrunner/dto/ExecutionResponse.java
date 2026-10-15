@@ -1,6 +1,9 @@
 package com.cocky.cockyrunner.dto;
 
+import com.cocky.cockyrunner.diagnostic.Diagnostic;
 import com.cocky.cockyrunner.domain.ExecutionStatus;
+
+import java.util.List;
 
 /**
  * @param executionTimeMs host-measured wall time around the whole execution
@@ -12,6 +15,9 @@ import com.cocky.cockyrunner.domain.ExecutionStatus;
  *                        where the wrapper never finished writing it)
  * @param userCpuMs       the user program's own CPU time (user+sys); null under
  *                        the same conditions as {@code userWallMs}
+ * @param diagnostics     line-pinned compiler/runtime errors parsed from the
+ *                        (pre-truncation) compile error or stderr; empty when
+ *                        there are none or they can't be parsed
  */
 public record ExecutionResponse(
         ExecutionStatus status,
@@ -20,8 +26,18 @@ public record ExecutionResponse(
         int exitCode,
         long executionTimeMs,
         Long userWallMs,
-        Long userCpuMs
+        Long userCpuMs,
+        List<Diagnostic> diagnostics
 ) {
+
+    public ExecutionResponse {
+        diagnostics = diagnostics == null ? List.of() : diagnostics;
+    }
+
+    public ExecutionResponse(ExecutionStatus status, String stdout, String stderr, int exitCode,
+                             long executionTimeMs, Long userWallMs, Long userCpuMs) {
+        this(status, stdout, stderr, exitCode, executionTimeMs, userWallMs, userCpuMs, List.of());
+    }
 
     /**
      * For a response where no timing breakdown was ever possible because no
@@ -36,6 +52,6 @@ public record ExecutionResponse(
      */
     public static ExecutionResponse withoutTiming(ExecutionStatus status, String stdout, String stderr,
                                                     int exitCode, long executionTimeMs) {
-        return new ExecutionResponse(status, stdout, stderr, exitCode, executionTimeMs, null, null);
+        return new ExecutionResponse(status, stdout, stderr, exitCode, executionTimeMs, null, null, List.of());
     }
 }

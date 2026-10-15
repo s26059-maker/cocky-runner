@@ -4,6 +4,8 @@ import com.cocky.cockyrunner.config.DockerProperties;
 import com.cocky.cockyrunner.config.LanguageDockerProperties;
 import com.cocky.cockyrunner.config.LanguageSpecRegistry;
 import com.cocky.cockyrunner.domain.ExecutionStatus;
+import com.cocky.cockyrunner.diagnostic.Diagnostic;
+import com.cocky.cockyrunner.diagnostic.Severity;
 import com.cocky.cockyrunner.domain.JudgeResult;
 import com.cocky.cockyrunner.domain.Language;
 import com.cocky.cockyrunner.domain.Problem;
@@ -581,5 +583,45 @@ class JudgeServiceTest {
 
         assertThat(result.userWallMs()).isNull();
         assertThat(result.userCpuMs()).isNull();
+    }
+
+    @Test
+    void compileError_hasDiagnosticsAndScrubbedErrorOutput() {
+        Problem problem = new Problem("p1", "title", "desc", 2000, List.of(new TestCase("in", "out", false)));
+        when(problemRepository.findById("p1")).thenReturn(Optional.of(problem));
+        SubmissionExecution execution = mock(SubmissionExecution.class);
+        when(execution.compilationFailed()).thenReturn(true);
+        when(execution.compileErrorOutput()).thenReturn("/work/main.c:2:7: error: boom");
+        stubPrepare(execution);
+
+        JudgeResult result = judgeService.judge("p1", Language.C, "bad code");
+
+        assertThat(result.errorOutput()).isEqualTo("main.c:2:7: error: boom");
+        assertThat(result.diagnostics()).containsExactly(new Diagnostic(2, 7, Severity.ERROR, "boom"));
+    }
+
+    @Test
+    void sampleRuntimeError_hasDiagnostics_hiddenRuntimeErrorHasNone() {
+        String stderr = "Traceback (most recent call last):\n  File \"/work/main.py\", line 4, in <module>\nValueError: x\n";
+        ExecutionResponse re = new ExecutionResponse(ExecutionStatus.RUNTIME_ERROR, "", stderr, 1, 10, 5L, 5L);
+
+        Problem sampleFails = new Problem("p1", "title", "desc", 2000, List.of(new TestCase("in", "out", true)));
+        when(problemRepository.findById("p1")).thenReturn(Optional.of(sampleFails));
+        SubmissionExecution execution = readyExecution();
+        stubPrepare(execution);
+        when(executionService.execute(eq(execution), anyString(), anyLong())).thenReturn(re);
+
+        JudgeResult onSample = judgeService.judge("p1", Language.PYTHON, "code");
+
+        assertThat(onSample.errorOutput()).doesNotContain("/work/");
+        assertThat(onSample.diagnostics()).containsExactly(new Diagnostic(4, null, Severity.ERROR, "ValueError: x"));
+
+        Problem hiddenFails = new Problem("p2", "title", "desc", 2000, List.of(new TestCase("in", "out", false)));
+        when(problemRepository.findById("p2")).thenReturn(Optional.of(hiddenFails));
+
+        JudgeResult onHidden = judgeService.judge("p2", Language.PYTHON, "code");
+
+        assertThat(onHidden.errorOutput()).isNull();
+        assertThat(onHidden.diagnostics()).isEmpty();
     }
 }

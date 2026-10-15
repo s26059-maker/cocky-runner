@@ -1,0 +1,40 @@
+.diagnostic-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-height: 120px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.diagnostic-list__item {
+  display: block;
+  width: 100%;
+  padding: var(--space-1) var(--space-3);
+  border: 0;
+  border-left: 2px solid var(--verdict-wa);
+  border-radius: var(--radius-sm);
+  background: var(--verdict-wa-bg);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.diagnostic-list__item:hover {
+  filter: brightness(1.25);
+}
+
+.diagnostic-list__item--warning {
+  border-left-color: var(--verdict-tle);
+  background: var(--verdict-tle-bg);
+}
+
+.diagnostic-list__item--info {
+  border-left-color: var(--verdict-pending);
+  background: var(--verdict-pending-bg);
+}

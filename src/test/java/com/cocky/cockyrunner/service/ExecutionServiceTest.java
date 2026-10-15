@@ -3,6 +3,8 @@ package com.cocky.cockyrunner.service;
 import com.cocky.cockyrunner.config.DockerProperties;
 import com.cocky.cockyrunner.config.LanguageDockerProperties;
 import com.cocky.cockyrunner.config.LanguageSpecRegistry;
+import com.cocky.cockyrunner.diagnostic.Diagnostic;
+import com.cocky.cockyrunner.diagnostic.Severity;
 import com.cocky.cockyrunner.domain.ExecutionStatus;
 import com.cocky.cockyrunner.domain.Language;
 import com.cocky.cockyrunner.dto.ExecutionRequest;
@@ -153,5 +155,62 @@ class ExecutionServiceTest {
         ExecutionResponse actual = executionService.execute(execution, "in", 1500L);
 
         assertThat(actual).isEqualTo(expected);
+    }
+
+    @Test
+    void compileFailure_includesDiagnosticsFromRawOutputAndScrubsWorkPath() {
+        SubmissionExecution execution = mock(SubmissionExecution.class);
+        when(execution.compilationFailed()).thenReturn(true);
+        when(execution.compileErrorOutput()).thenReturn("main.c:3:5: error: expected ';' before 'return'\n/work/x");
+        when(dockerRunner.prepareSubmission(any(), anyString())).thenReturn(execution);
+
+        ExecutionResponse response = executionService.execute(new ExecutionRequest("c", "int main() {", ""));
+
+        assertThat(response.status()).isEqualTo(ExecutionStatus.COMPILE_ERROR);
+        assertThat(response.stderr()).isEqualTo("main.c:3:5: error: expected ';' before 'return'\nx");
+        assertThat(response.diagnostics()).containsExactly(
+                new Diagnostic(3, 5, Severity.ERROR, "expected ';' before 'return'"));
+    }
+
+    @Test
+    void compileFailure_diagnosticsComeFromTheUntruncatedOutput() {
+        SubmissionExecution execution = mock(SubmissionExecution.class);
+        when(execution.compilationFailed()).thenReturn(true);
+        // the error sits past the 4000-char cap, so the visible text no longer contains it
+        when(execution.compileErrorOutput())
+                .thenReturn("x".repeat(TextTruncator.MAX_LENGTH + 10) + "\nmain.c:9:1: error: late");
+        when(dockerRunner.prepareSubmission(any(), anyString())).thenReturn(execution);
+
+        ExecutionResponse response = executionService.execute(new ExecutionRequest("c", "code", ""));
+
+        assertThat(response.stderr()).doesNotContain("late");
+        assertThat(response.diagnostics()).containsExactly(new Diagnostic(9, 1, Severity.ERROR, "late"));
+    }
+
+    @Test
+    void runtimeError_parsesDiagnosticsFromStderrAndScrubsWorkPath() {
+        SubmissionExecution execution = readyExecution();
+        when(dockerRunner.prepareSubmission(any(), anyString())).thenReturn(execution);
+        String stderr = "Traceback (most recent call last):\n  File \"/work/main.py\", line 2, in <module>\n"
+                + "ZeroDivisionError: division by zero\n";
+        when(execution.run("", 5000L)).thenReturn(
+                new ExecutionResponse(ExecutionStatus.RUNTIME_ERROR, "", stderr, 1, 10, 5L, 5L));
+
+        ExecutionResponse response = executionService.execute(new ExecutionRequest("python", "1/0", ""));
+
+        assertThat(response.stderr()).doesNotContain("/work/").contains("File \"main.py\", line 2");
+        assertThat(response.diagnostics()).containsExactly(
+                new Diagnostic(2, null, Severity.ERROR, "ZeroDivisionError: division by zero"));
+        assertThat(response.userWallMs()).isEqualTo(5L);
+    }
+
+    @Test
+    void successWithStderr_hasNoDiagnostics() {
+        SubmissionExecution execution = readyExecution();
+        when(dockerRunner.prepareSubmission(any(), anyString())).thenReturn(execution);
+        when(execution.run("", 5000L)).thenReturn(
+                new ExecutionResponse(ExecutionStatus.SUCCESS, "", "main.py:1: warning", 0, 10, 5L, 5L));
+
+        assertThat(executionService.execute(new ExecutionRequest("python", "x", "")).diagnostics()).isEmpty();
     }
 }

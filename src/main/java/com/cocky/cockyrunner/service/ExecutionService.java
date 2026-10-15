@@ -11,8 +11,12 @@ import com.cocky.cockyrunner.exception.InvalidExecutionRequestException;
 import com.cocky.cockyrunner.runner.DockerRunner;
 import com.cocky.cockyrunner.runner.RunOutcome;
 import com.cocky.cockyrunner.runner.SubmissionExecution;
-import com.cocky.cockyrunner.util.TextTruncator;
+import com.cocky.cockyrunner.diagnostic.Diagnostic;
+import com.cocky.cockyrunner.diagnostic.Diagnostics;
+import com.cocky.cockyrunner.util.WorkPathScrubber;
 import org.springframework.stereotype.Service;
+
+import java.util.List;
 
 /**
  * Pure execution core with no HTTP dependency, so it can be reused as-is by the
@@ -52,11 +56,27 @@ public class ExecutionService {
         Language language = parseLanguage(request.language());
         try (SubmissionExecution execution = prepare(language, request.code())) {
             if (execution.compilationFailed()) {
-                String compileErrorOutput = TextTruncator.truncate(execution.compileErrorOutput());
-                return ExecutionResponse.withoutTiming(ExecutionStatus.COMPILE_ERROR, "", compileErrorOutput, -1, 0);
+                // parsed from the raw output, before the scrub/truncate the client sees
+                String rawCompileError = execution.compileErrorOutput();
+                return new ExecutionResponse(ExecutionStatus.COMPILE_ERROR, "",
+                        WorkPathScrubber.scrubAndTruncate(rawCompileError), -1, 0, null, null,
+                        Diagnostics.parse(language, rawCompileError, request.code()));
             }
-            return execute(execution, request.stdin(), timeoutMs);
+            return withUserFacingStderr(language, request.code(), execute(execution, request.stdin(), timeoutMs));
         }
+    }
+
+    /**
+     * Only for the /api/v1 single-shot path: {@link #execute(SubmissionExecution, String, long)}
+     * itself stays untouched because the /internal API reuses it and must keep the raw stderr.
+     */
+    private static ExecutionResponse withUserFacingStderr(Language language, String code, ExecutionResponse response) {
+        List<Diagnostic> diagnostics = response.status() == ExecutionStatus.RUNTIME_ERROR
+                ? Diagnostics.parse(language, response.stderr(), code)
+                : List.of();
+        return new ExecutionResponse(response.status(), response.stdout(), WorkPathScrubber.scrub(response.stderr()),
+                response.exitCode(), response.executionTimeMs(), response.userWallMs(), response.userCpuMs(),
+                diagnostics);
     }
 
     /**

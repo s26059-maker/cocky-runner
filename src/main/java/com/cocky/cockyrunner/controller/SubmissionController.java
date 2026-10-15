@@ -46,7 +46,8 @@ public class SubmissionController {
                 result.maxExecutionTimeMs(),
                 result.errorOutput(),
                 result.userWallMs(),
-                result.userCpuMs()
+                result.userCpuMs(),
+                result.diagnostics()
         );
 
         HttpStatus httpStatus = result.verdict() == Verdict.ERROR

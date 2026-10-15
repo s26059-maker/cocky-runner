@@ -25,6 +25,18 @@ export interface ProblemDetail {
   sampleTestCases: TestCasePreview[]
 }
 
+export type DiagnosticSeverity = 'ERROR' | 'WARNING' | 'INFO'
+
+// A compiler/runtime message pinned to a source line (see Diagnostic on the backend).
+export interface Diagnostic {
+  // 1-based.
+  line: number
+  // 1-based; null when the tool only reports a line.
+  column: number | null
+  severity: DiagnosticSeverity
+  message: string
+}
+
 export type Verdict = 'AC' | 'WA' | 'TLE' | 'RE' | 'CE' | 'ERROR'
 
 export interface SubmissionRequest {
@@ -48,6 +60,8 @@ export interface SubmissionResponse {
   // (hidden-case failures, WA, TLE) - see JudgeResult on the backend. Always
   // present in the response (never omitted), so this is not optional.
   errorOutput: string | null
+  // Parsed from errorOutput's untruncated text; empty when there is none.
+  diagnostics: Diagnostic[]
 }
 
 export interface SampleCaseResult {
@@ -67,6 +81,8 @@ export interface SampleRunResponse {
   // Set (and cases empty) when compilation failed.
   compileError: string | null
   cases: SampleCaseResult[]
+  // From the compile error, else from the first RE case's stderr.
+  diagnostics: Diagnostic[]
 }
 
 export type ExecutionStatus = 'SUCCESS' | 'RUNTIME_ERROR' | 'TIMEOUT' | 'COMPILE_ERROR' | 'ERROR'
@@ -88,4 +104,6 @@ export interface ExecutionResponse {
   // (CE, TIMEOUT, infra ERROR) - see ExecutionResponse on the backend.
   userWallMs: number | null
   userCpuMs: number | null
+  // Parsed from the compile error (CE) or stderr (RE); empty otherwise.
+  diagnostics: Diagnostic[]
 }

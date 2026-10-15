@@ -1,6 +1,8 @@
 package com.cocky.cockyrunner.controller;
 
 import com.cocky.cockyrunner.config.CorsProperties;
+import com.cocky.cockyrunner.diagnostic.Diagnostic;
+import com.cocky.cockyrunner.diagnostic.Severity;
 import com.cocky.cockyrunner.domain.Language;
 import com.cocky.cockyrunner.domain.SampleRunResult;
 import com.cocky.cockyrunner.domain.SampleRunResult.SampleCaseResult;
@@ -125,5 +127,30 @@ class SampleRunControllerTest {
 
         mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON).content(BODY))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void diagnostics_areTopLevel() throws Exception {
+        when(judgeService.judgeSamples(eq("a-plus-b"), eq(Language.PYTHON), any()))
+                .thenReturn(new SampleRunResult("main.c:1:1: error: x", List.of(),
+                        List.of(new Diagnostic(1, 1, Severity.ERROR, "x"))));
+
+        mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON).content(BODY))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.compileError").value("main.c:1:1: error: x"))
+                .andExpect(jsonPath("$.diagnostics", hasSize(1)))
+                .andExpect(jsonPath("$.diagnostics[0].line").value(1))
+                .andExpect(jsonPath("$.diagnostics[0].column").value(1))
+                .andExpect(jsonPath("$.diagnostics[0].severity").value("ERROR"))
+                .andExpect(jsonPath("$.diagnostics[0].message").value("x"));
+    }
+
+    @Test
+    void noDiagnostics_isEmptyArray() throws Exception {
+        when(judgeService.judgeSamples(eq("a-plus-b"), eq(Language.PYTHON), any()))
+                .thenReturn(new SampleRunResult(null, List.of()));
+
+        mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON).content(BODY))
+                .andExpect(jsonPath("$.diagnostics", hasSize(0)));
     }
 }

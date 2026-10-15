@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { ChangeEvent, KeyboardEvent } from 'react'
 import { Link, useParams } from 'react-router'
 import { getProblem } from '../api/problems'
@@ -10,6 +10,7 @@ import { useProblemDraft } from '../hooks/useProblemDraft'
 import { useProblemStdin } from '../hooks/useProblemStdin'
 import { MAX_FONT_SIZE, MIN_FONT_SIZE, useEditorFontSize } from '../hooks/useEditorFontSize'
 import CodeEditor, {
+  type CodeEditorHandle,
   LANGUAGE_TEMPLATES,
   SUPPORTED_LANGUAGES,
   type SupportedLanguage,
@@ -22,6 +23,7 @@ import Button from '../components/ui/Button'
 import Select from '../components/ui/Select'
 import {
   MAX_SOURCE_LENGTH,
+  type Diagnostic,
   type ExecutionResponse,
   type SampleRunResponse,
   type SubmissionResponse,
@@ -46,6 +48,8 @@ const RESULT_TABS: { id: ResultTab; label: string }[] = [
   { id: 'samples', label: '예제 결과' },
   { id: 'submit', label: '제출 결과' },
 ]
+
+const NO_DIAGNOSTICS: Diagnostic[] = []
 
 function ProblemDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -74,6 +78,23 @@ function ProblemDetailPage() {
   const [result, setResult] = useState<SubmissionResponse | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
+  // Editor underlines. Cleared when a run/samples/submit starts and on a language
+  // change - never on typing. Tagged with the problem id so another problem's
+  // errors can't show up on this problem's code.
+  const editorRef = useRef<CodeEditorHandle>(null)
+  const [markerState, setMarkerState] = useState<{ problemId: string | undefined; items: Diagnostic[] }>({
+    problemId: id,
+    items: NO_DIAGNOSTICS,
+  })
+  const markers = markerState.problemId === id ? markerState.items : NO_DIAGNOSTICS
+  function showMarkers(items: Diagnostic[] | undefined) {
+    setMarkerState({ problemId: id, items: items && items.length > 0 ? items : NO_DIAGNOSTICS })
+  }
+
+  function handleSelectDiagnostic(d: Diagnostic) {
+    editorRef.current?.revealLine(d.line, d.column)
+  }
+
   const isBlank = !code.trim()
   const isTooLong = code.length > MAX_SOURCE_LENGTH
   const busy = running || runningSamples || submitting
@@ -90,9 +111,12 @@ function ProblemDetailPage() {
     setRunningSamples(true)
     setSampleResult(null)
     setSampleError(null)
+    showMarkers(NO_DIAGNOSTICS)
 
     try {
-      setSampleResult(await runSamples(id, { language, code }))
+      const response = await runSamples(id, { language, code })
+      setSampleResult(response)
+      showMarkers(response.diagnostics)
     } catch (err) {
       setSampleError(toErrorMessage(err))
     } finally {
@@ -114,9 +138,12 @@ function ProblemDetailPage() {
     setRunning(true)
     setRunResult(null)
     setRunError(null)
+    showMarkers(NO_DIAGNOSTICS)
 
     try {
-      setRunResult(await runCode({ language, code, stdin }))
+      const response = await runCode({ language, code, stdin })
+      setRunResult(response)
+      showMarkers(response.diagnostics)
     } catch (err) {
       setRunError(toErrorMessage(err))
     } finally {
@@ -133,10 +160,12 @@ function ProblemDetailPage() {
     setSubmitting(true)
     setResult(null)
     setSubmitError(null)
+    showMarkers(NO_DIAGNOSTICS)
 
     try {
       const response = await submitSolution(id, { language, code })
       setResult(response)
+      showMarkers(response.diagnostics)
     } catch (err) {
       setSubmitError(toErrorMessage(err))
     } finally {
@@ -154,6 +183,7 @@ function ProblemDetailPage() {
   function handleLanguageChange(e: ChangeEvent<HTMLSelectElement>) {
     const newLanguage = e.target.value as SupportedLanguage
     setLanguage(newLanguage)
+    showMarkers(NO_DIAGNOSTICS)
     // Never overwrite code the user already wrote - only fill in the new
     // language's template if the editor is currently empty.
     if (!code.trim()) {
@@ -269,6 +299,8 @@ function ProblemDetailPage() {
           <div className="solution-panel">
             <div className="solution-panel__editor">
               <CodeEditor
+                ref={editorRef}
+                diagnostics={markers}
                 value={code}
                 onChange={setCode}
                 language={language}
@@ -347,7 +379,12 @@ function ProblemDetailPage() {
                   />
                 )}
                 {activeTab === 'run' && (
-                  <ExecutionResult result={runResult} runError={runError} running={running} />
+                  <ExecutionResult
+                    result={runResult}
+                    runError={runError}
+                    running={running}
+                    onSelectDiagnostic={handleSelectDiagnostic}
+                  />
                 )}
                 {activeTab === 'samples' && (
                   <SampleResult
@@ -355,10 +392,16 @@ function ProblemDetailPage() {
                     sampleError={sampleError}
                     running={runningSamples}
                     onSendInput={handleSendInput}
+                    onSelectDiagnostic={handleSelectDiagnostic}
                   />
                 )}
                 {activeTab === 'submit' && (
-                  <SubmissionResult result={result} submitError={submitError} submitting={submitting} />
+                  <SubmissionResult
+                    result={result}
+                    submitError={submitError}
+                    submitting={submitting}
+                    onSelectDiagnostic={handleSelectDiagnostic}
+                  />
                 )}
               </div>
             </div>

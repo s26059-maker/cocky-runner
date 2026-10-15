@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/work/main.py", line 7, in <module>
+    g()
+  File "/work/main.py", line 5, in g
+    return f(0)
+           ^^^^
+  File "/work/main.py", line 2, in f
+    return 1 / x
+           ~~^~~
+ZeroDivisionError: division by zero

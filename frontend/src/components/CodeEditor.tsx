@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
 import * as monaco from 'monaco-editor'
 import EditorWorker from 'monaco-editor/editor/editor.worker?worker'
 import Editor, { loader, type OnMount } from '@monaco-editor/react'
+import type { Diagnostic } from '../types'
 import './CodeEditor.css'
 
 // Bundle Monaco locally (no CDN). Only the base editor worker is registered:
@@ -99,6 +100,52 @@ function defineCockyTheme(m: typeof monaco) {
   })
 }
 
+const MARKER_OWNER = 'cocky'
+
+type ITextModel = monaco.editor.ITextModel
+
+/** Maps a backend diagnostic to a Monaco marker, clamped to the model's bounds. */
+function toMarker(m: typeof monaco, model: ITextModel, d: Diagnostic): monaco.editor.IMarkerData {
+  const lastLine = model.getLineCount()
+  const lineNumber = Math.min(Math.max(d.line, 1), lastLine)
+  const maxColumn = model.getLineMaxColumn(lineNumber)
+
+  let startColumn: number
+  let endColumn: number
+  // A clamped line no longer matches the column the tool reported, so mark the whole line then.
+  if (d.column != null && lineNumber === d.line) {
+    const column = Math.min(Math.max(d.column, 1), maxColumn)
+    const word = model.getWordAtPosition({ lineNumber, column })
+    if (word) {
+      startColumn = word.startColumn
+      endColumn = word.endColumn
+    } else if (column < maxColumn) {
+      startColumn = column
+      endColumn = column + 1
+    } else {
+      startColumn = Math.max(column - 1, 1)
+      endColumn = column
+    }
+  } else {
+    startColumn = model.getLineFirstNonWhitespaceColumn(lineNumber) || 1
+    endColumn = maxColumn
+  }
+
+  const severity =
+    d.severity === 'ERROR'
+      ? m.MarkerSeverity.Error
+      : d.severity === 'WARNING'
+        ? m.MarkerSeverity.Warning
+        : m.MarkerSeverity.Info
+
+  return { severity, message: d.message, startLineNumber: lineNumber, startColumn, endLineNumber: lineNumber, endColumn }
+}
+
+/** The only editor operation exposed to the page: jump to a line (see DiagnosticList). */
+export interface CodeEditorHandle {
+  revealLine: (line: number, column?: number | null) => void
+}
+
 interface CodeEditorProps {
   value: string
   onChange: (value: string) => void
@@ -115,9 +162,57 @@ interface CodeEditorProps {
   onRun?: () => void
   /** Editor font size in px; defaults to --text-base. lineHeight follows at x1.6. */
   fontSize?: number
+  /**
+   * Compiler/runtime errors to underline. The caller decides when they appear
+   * and go away (typing does not clear them); pass a stable array - the markers
+   * are re-applied whenever this identity changes.
+   */
+  diagnostics?: Diagnostic[]
+  ref?: Ref<CodeEditorHandle>
 }
 
-function CodeEditor({ value, onChange, language, readOnly = false, onSubmit, onRun, fontSize }: CodeEditorProps) {
+function CodeEditor({
+  value,
+  onChange,
+  language,
+  readOnly = false,
+  onSubmit,
+  onRun,
+  fontSize,
+  diagnostics,
+  ref,
+}: CodeEditorProps) {
+  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
+  const monacoRef = useRef<typeof monaco | null>(null)
+  // Markers can only be set once the editor exists; flipping this re-runs the marker effect.
+  const [mounted, setMounted] = useState(false)
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      revealLine(line, column) {
+        const editor = editorRef.current
+        const model = editor?.getModel()
+        if (!editor || !model) return
+        const lineNumber = Math.min(Math.max(line, 1), model.getLineCount())
+        editor.revealLineInCenter(lineNumber)
+        editor.setPosition({
+          lineNumber,
+          column: column != null ? Math.min(Math.max(column, 1), model.getLineMaxColumn(lineNumber))
+            : model.getLineFirstNonWhitespaceColumn(lineNumber) || 1,
+        })
+        editor.focus()
+      },
+    }),
+    [],
+  )
+
+  useEffect(() => {
+    const m = monacoRef.current
+    const model = editorRef.current?.getModel()
+    if (!mounted || !m || !model) return
+    m.editor.setModelMarkers(model, MARKER_OWNER, (diagnostics ?? []).map((d) => toMarker(m, model, d)))
+  }, [diagnostics, mounted])
   // addCommand registers its callbacks once at mount, so they must read the
   // latest props through refs instead of closing over the first ones.
   const onSubmitRef = useRef(onSubmit)
@@ -138,6 +233,9 @@ function CodeEditor({ value, onChange, language, readOnly = false, onSubmit, onR
   }, [])
 
   const handleMount: OnMount = (editor, m) => {
+    editorRef.current = editor
+    monacoRef.current = m
+    setMounted(true)
     editor.addCommand(m.KeyMod.CtrlCmd | m.KeyCode.Enter, () => {
       onRunRef.current?.()
     })

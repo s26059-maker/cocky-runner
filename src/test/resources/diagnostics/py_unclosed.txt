@@ -1,0 +1,4 @@
+  File "/work/main.py", line 1
+    x = [1,2
+        ^
+SyntaxError: '[' was never closed

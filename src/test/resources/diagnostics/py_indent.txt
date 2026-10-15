@@ -1,0 +1,4 @@
+  File "/work/main.py", line 2
+    print("a")
+    ^
+IndentationError: expected an indented block after function definition on line 1

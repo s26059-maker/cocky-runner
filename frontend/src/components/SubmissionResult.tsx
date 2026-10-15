@@ -1,4 +1,5 @@
-import type { SubmissionResponse } from '../types'
+import type { Diagnostic, SubmissionResponse } from '../types'
+import DiagnosticList from './DiagnosticList'
 import Badge from './ui/Badge'
 import { VERDICT_LABEL, VERDICT_TONE } from './verdictDisplay'
 import './SubmissionResult.css'
@@ -17,9 +18,10 @@ interface SubmissionResultProps {
   result: SubmissionResponse | null
   submitError: string | null
   submitting?: boolean
+  onSelectDiagnostic?: (diagnostic: Diagnostic) => void
 }
 
-function SubmissionResult({ result, submitError, submitting = false }: SubmissionResultProps) {
+function SubmissionResult({ result, submitError, submitting = false, onSelectDiagnostic }: SubmissionResultProps) {
   if (submitting) {
     return (
       <div className="submission-result submission-result--pending" role="status">
@@ -67,6 +69,7 @@ function SubmissionResult({ result, submitError, submitting = false }: Submissio
           {result.failedCaseNumber != null && ` · #${result.failedCaseNumber}`}
         </span>
       </div>
+      {canHaveErrorDetail && <DiagnosticList diagnostics={result.diagnostics} onSelect={onSelectDiagnostic} />}
       {canHaveErrorDetail &&
         (errorOutput ? (
           <pre className="submission-result__error">{errorOutput}</pre>

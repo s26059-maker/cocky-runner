@@ -1,5 +1,6 @@
 package com.cocky.cockyrunner.dto;
 
+import com.cocky.cockyrunner.diagnostic.Diagnostic;
 import com.cocky.cockyrunner.domain.SampleRunResult;
 import com.cocky.cockyrunner.domain.Verdict;
 
@@ -7,7 +8,8 @@ import java.util.List;
 
 public record SampleRunResponse(
         String compileError,
-        List<SampleCaseResponse> cases
+        List<SampleCaseResponse> cases,
+        List<Diagnostic> diagnostics
 ) {
 
     public record SampleCaseResponse(
@@ -26,6 +28,6 @@ public record SampleRunResponse(
                 .map(c -> new SampleCaseResponse(c.index(), c.input(), c.expectedOutput(), c.actualOutput(),
                         c.verdict(), c.stderr(), c.userWallMs()))
                 .toList();
-        return new SampleRunResponse(result.compileError(), cases);
+        return new SampleRunResponse(result.compileError(), cases, result.diagnostics());
     }
 }
