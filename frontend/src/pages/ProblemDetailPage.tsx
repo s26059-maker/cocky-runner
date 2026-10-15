@@ -1,21 +1,25 @@
-import { useCallback, useRef, useState } from 'react'
-import type { ChangeEvent } from 'react'
+import { useState } from 'react'
+import type { ChangeEvent, KeyboardEvent } from 'react'
 import { Link, useParams } from 'react-router'
 import { getProblem } from '../api/problems'
 import { submitSolution } from '../api/submissions'
+import { runCode } from '../api/executions'
 import { ApiError, toErrorMessage } from '../api/client'
 import { useAsyncData } from '../hooks/useAsyncData'
 import { useProblemDraft } from '../hooks/useProblemDraft'
+import { useProblemStdin } from '../hooks/useProblemStdin'
+import { MAX_FONT_SIZE, MIN_FONT_SIZE, useEditorFontSize } from '../hooks/useEditorFontSize'
 import CodeEditor, {
   LANGUAGE_TEMPLATES,
   SUPPORTED_LANGUAGES,
   type SupportedLanguage,
 } from '../components/CodeEditor'
 import SubmissionResult from '../components/SubmissionResult'
+import ExecutionResult from '../components/ExecutionResult'
 import Panel from '../components/ui/Panel'
 import Button from '../components/ui/Button'
 import Select from '../components/ui/Select'
-import { MAX_SOURCE_LENGTH, type SubmissionResponse } from '../types'
+import { MAX_SOURCE_LENGTH, type ExecutionResponse, type SubmissionResponse } from '../types'
 import './ProblemDetailPage.css'
 
 const LANGUAGE_LABELS: Record<SupportedLanguage, string> = {
@@ -25,7 +29,16 @@ const LANGUAGE_LABELS: Record<SupportedLanguage, string> = {
 }
 
 const IS_MAC = /Mac|iPhone|iPad|iPod/.test(navigator.userAgent)
-const SUBMIT_SHORTCUT_LABEL = IS_MAC ? '⌘Enter' : 'Ctrl+Enter'
+const RUN_SHORTCUT_LABEL = IS_MAC ? '⌘Enter' : 'Ctrl+Enter'
+const SUBMIT_SHORTCUT_LABEL = IS_MAC ? '⌘⇧Enter' : 'Ctrl+Shift+Enter'
+
+type ResultTab = 'input' | 'run' | 'submit'
+
+const RESULT_TABS: { id: ResultTab; label: string }[] = [
+  { id: 'input', label: '입력' },
+  { id: 'run', label: '실행 결과' },
+  { id: 'submit', label: '제출 결과' },
+]
 
 function ProblemDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -37,19 +50,51 @@ function ProblemDetailPage() {
     SUPPORTED_LANGUAGES[0],
     LANGUAGE_TEMPLATES,
   )
+  // null until *this* problem has loaded (useAsyncData keeps the previous
+  // problem's data around while the next one is fetching).
+  const sampleInput = problem && problem.id === id ? (problem.sampleTestCases[0]?.input ?? '') : null
+  const { stdin, setStdin } = useProblemStdin(id, sampleInput)
+  const { fontSize, setFontSize } = useEditorFontSize()
+
+  const [activeTab, setActiveTab] = useState<ResultTab>('input')
+  const [running, setRunning] = useState(false)
+  const [runResult, setRunResult] = useState<ExecutionResponse | null>(null)
+  const [runError, setRunError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<SubmissionResponse | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
   const isBlank = !code.trim()
   const isTooLong = code.length > MAX_SOURCE_LENGTH
-  const canSubmit = !isBlank && !isTooLong && !submitting
+  const busy = running || submitting
+  const canRun = !isBlank && !isTooLong && !busy
+  const canSubmit = canRun
+
+  async function handleRun() {
+    if (!canRun) {
+      return
+    }
+
+    setActiveTab('run')
+    setRunning(true)
+    setRunResult(null)
+    setRunError(null)
+
+    try {
+      setRunResult(await runCode({ language, code, stdin }))
+    } catch (err) {
+      setRunError(toErrorMessage(err))
+    } finally {
+      setRunning(false)
+    }
+  }
 
   async function handleSubmit() {
     if (!id || !canSubmit) {
       return
     }
 
+    setActiveTab('submit')
     setSubmitting(true)
     setResult(null)
     setSubmitError(null)
@@ -64,16 +109,12 @@ function ProblemDetailPage() {
     }
   }
 
-  // CodeEditor memoizes its CodeMirror extensions on [language, onSubmit], so
-  // onSubmit needs a stable identity - handleSubmit itself isn't stable (it
-  // closes over code/submitting, which change on every keystroke). This ref
-  // always points at the latest handleSubmit; the wrapper passed down never
-  // changes identity but always calls the current one.
-  const handleSubmitRef = useRef(handleSubmit)
-  handleSubmitRef.current = handleSubmit
-  const handleSubmitViaShortcut = useCallback(() => {
-    handleSubmitRef.current()
-  }, [])
+  function handleStdinKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'Enter') {
+      e.preventDefault()
+      void handleRun()
+    }
+  }
 
   function handleLanguageChange(e: ChangeEvent<HTMLSelectElement>) {
     const newLanguage = e.target.value as SupportedLanguage
@@ -149,14 +190,37 @@ function ProblemDetailPage() {
           title="SOLUTION"
           headerRight={
             <>
-              <Button variant="ghost" size="sm" onClick={handleReset} disabled={submitting}>
+              <div className="font-size-control" role="group" aria-label="글꼴 크기">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setFontSize(fontSize - 1)}
+                  disabled={fontSize <= MIN_FONT_SIZE}
+                  aria-label="글꼴 작게"
+                >
+                  −
+                </Button>
+                <span className="font-size-control__value" aria-live="polite">
+                  {fontSize}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setFontSize(fontSize + 1)}
+                  disabled={fontSize >= MAX_FONT_SIZE}
+                  aria-label="글꼴 크게"
+                >
+                  +
+                </Button>
+              </div>
+              <Button variant="ghost" size="sm" onClick={handleReset} disabled={busy}>
                 Reset
               </Button>
               <Select
                 aria-label="언어"
                 value={language}
                 onChange={handleLanguageChange}
-                disabled={submitting}
+                disabled={busy}
               >
                 {SUPPORTED_LANGUAGES.map((lang) => (
                   <option key={lang} value={lang}>
@@ -174,7 +238,9 @@ function ProblemDetailPage() {
                 onChange={setCode}
                 language={language}
                 readOnly={submitting}
-                onSubmit={handleSubmitViaShortcut}
+                onSubmit={handleSubmit}
+                onRun={handleRun}
+                fontSize={fontSize}
               />
             </div>
 
@@ -189,13 +255,67 @@ function ProblemDetailPage() {
               {language === 'JAVA' && (
                 <span className="solution-panel__language-hint">클래스 이름은 Main이어야 합니다</span>
               )}
-              <span className="solution-panel__shortcut-hint">{SUBMIT_SHORTCUT_LABEL}</span>
-              <Button onClick={handleSubmit} disabled={!canSubmit} title={`${SUBMIT_SHORTCUT_LABEL}로도 제출할 수 있습니다`}>
+              <Button
+                variant="ghost"
+                onClick={handleRun}
+                disabled={!canRun}
+                title={`${RUN_SHORTCUT_LABEL}로도 실행할 수 있습니다`}
+              >
+                {running ? '실행 중...' : '실행'}
+                <span className="solution-panel__shortcut-hint">{RUN_SHORTCUT_LABEL}</span>
+              </Button>
+              <Button
+                onClick={handleSubmit}
+                disabled={!canSubmit}
+                title={`${SUBMIT_SHORTCUT_LABEL}로도 제출할 수 있습니다`}
+              >
                 {submitting ? '채점 중...' : '제출'}
+                <span className="solution-panel__shortcut-hint">{SUBMIT_SHORTCUT_LABEL}</span>
               </Button>
             </div>
 
-            <SubmissionResult result={result} submitError={submitError} submitting={submitting} />
+            <div className="result-tabs">
+              <div className="result-tabs__list" role="tablist">
+                {RESULT_TABS.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    id={`result-tab-${tab.id}`}
+                    aria-selected={activeTab === tab.id}
+                    aria-controls="result-tabpanel"
+                    className={`result-tabs__tab${activeTab === tab.id ? ' result-tabs__tab--active' : ''}`}
+                    onClick={() => setActiveTab(tab.id)}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+              <div
+                className="result-tabs__panel"
+                role="tabpanel"
+                id="result-tabpanel"
+                aria-labelledby={`result-tab-${activeTab}`}
+              >
+                {activeTab === 'input' && (
+                  <textarea
+                    className="result-tabs__stdin"
+                    aria-label="표준 입력 (stdin)"
+                    placeholder={`실행 시 표준 입력으로 전달됩니다 (${RUN_SHORTCUT_LABEL}로 실행)`}
+                    spellCheck={false}
+                    value={stdin}
+                    onChange={(e) => setStdin(e.target.value)}
+                    onKeyDown={handleStdinKeyDown}
+                  />
+                )}
+                {activeTab === 'run' && (
+                  <ExecutionResult result={runResult} runError={runError} running={running} />
+                )}
+                {activeTab === 'submit' && (
+                  <SubmissionResult result={result} submitError={submitError} submitting={submitting} />
+                )}
+              </div>
+            </div>
           </div>
         </Panel>
       </div>

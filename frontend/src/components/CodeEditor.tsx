@@ -105,21 +105,27 @@ interface CodeEditorProps {
   language: SupportedLanguage
   readOnly?: boolean
   /**
-   * Fired on Ctrl+Enter / Cmd+Enter (KeyMod.CtrlCmd resolves to Ctrl on
-   * Windows/Linux and Cmd on Mac on its own). Whether this is currently a
-   * valid submission (blank code, already submitting, etc.) is entirely the
-   * caller's concern - this just forwards the key press unconditionally.
+   * Fired on Ctrl+Shift+Enter / Cmd+Shift+Enter (KeyMod.CtrlCmd resolves to
+   * Ctrl on Windows/Linux and Cmd on Mac on its own). Whether this is
+   * currently a valid submission (blank code, already submitting, etc.) is
+   * entirely the caller's concern - this just forwards the key press.
    */
   onSubmit: () => void
+  /** Fired on Ctrl+Enter / Cmd+Enter; same contract as onSubmit. */
+  onRun?: () => void
+  /** Editor font size in px; defaults to --text-base. lineHeight follows at x1.6. */
+  fontSize?: number
 }
 
-function CodeEditor({ value, onChange, language, readOnly = false, onSubmit }: CodeEditorProps) {
-  // addCommand registers its callback once at mount, so it must read the
-  // latest onSubmit through a ref instead of closing over the first one.
+function CodeEditor({ value, onChange, language, readOnly = false, onSubmit, onRun, fontSize }: CodeEditorProps) {
+  // addCommand registers its callbacks once at mount, so they must read the
+  // latest props through refs instead of closing over the first ones.
   const onSubmitRef = useRef(onSubmit)
+  const onRunRef = useRef(onRun)
   useEffect(() => {
     onSubmitRef.current = onSubmit
-  }, [onSubmit])
+    onRunRef.current = onRun
+  }, [onSubmit, onRun])
 
   // document.fonts.ready can resolve after unmount; skip remeasuring then.
   // Reset on (re)mount so StrictMode's mount/cleanup/mount cycle stays correct.
@@ -133,6 +139,9 @@ function CodeEditor({ value, onChange, language, readOnly = false, onSubmit }: C
 
   const handleMount: OnMount = (editor, m) => {
     editor.addCommand(m.KeyMod.CtrlCmd | m.KeyCode.Enter, () => {
+      onRunRef.current?.()
+    })
+    editor.addCommand(m.KeyMod.CtrlCmd | m.KeyMod.Shift | m.KeyCode.Enter, () => {
       onSubmitRef.current()
     })
     // JetBrains Mono comes from @fontsource and may still be loading at mount;
@@ -141,6 +150,8 @@ function CodeEditor({ value, onChange, language, readOnly = false, onSubmit }: C
       if (!disposedRef.current) m.editor.remeasureFonts()
     })
   }
+
+  const size = fontSize ?? (parseFloat(cssVar('--text-base')) || 13)
 
   return (
     <Editor
@@ -156,8 +167,8 @@ function CodeEditor({ value, onChange, language, readOnly = false, onSubmit }: C
       options={{
         tabSize: 4,
         fontFamily: cssVar('--font-mono'),
-        fontSize: parseFloat(cssVar('--text-base')) || 13,
-        lineHeight: Math.round((parseFloat(cssVar('--text-base')) || 13) * 1.6),
+        fontSize: size,
+        lineHeight: Math.round(size * 1.6),
         automaticLayout: true,
         minimap: { enabled: true },
         readOnly,
