@@ -50,6 +50,25 @@ export interface SubmissionResponse {
   errorOutput: string | null
 }
 
+export interface SampleCaseResult {
+  // 1-based position among the problem's sample cases.
+  index: number
+  input: string
+  expectedOutput: string
+  // Truncated server-side; null when infra failure left nothing to show.
+  actualOutput: string | null
+  verdict: Verdict
+  stderr: string | null
+  userWallMs: number | null
+}
+
+// Verdicts are decided by the backend (JudgeService) - never compare output here.
+export interface SampleRunResponse {
+  // Set (and cases empty) when compilation failed.
+  compileError: string | null
+  cases: SampleCaseResult[]
+}
+
 export type ExecutionStatus = 'SUCCESS' | 'RUNTIME_ERROR' | 'TIMEOUT' | 'COMPILE_ERROR' | 'ERROR'
 
 export interface ExecutionRequest {

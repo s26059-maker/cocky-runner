@@ -5,6 +5,7 @@ import com.cocky.cockyrunner.domain.JudgeResult;
 import com.cocky.cockyrunner.domain.Language;
 import com.cocky.cockyrunner.domain.LanguageSpec;
 import com.cocky.cockyrunner.domain.Problem;
+import com.cocky.cockyrunner.domain.SampleRunResult;
 import com.cocky.cockyrunner.domain.TestCase;
 import com.cocky.cockyrunner.domain.Verdict;
 import com.cocky.cockyrunner.dto.ExecutionResponse;
@@ -16,6 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -68,6 +70,62 @@ public class JudgeService {
             }
             return runTestCases(problem, execution, timeoutMs);
         }
+    }
+
+    /**
+     * Runs only the problem's public sample cases and reports each one, without
+     * stopping at the first failure. Reuses the same compile-once flow, timeout
+     * resolution, status-to-verdict mapping and {@link OutputComparator} as
+     * {@link #judge}; it is a separate entry point so {@code judge}'s behaviour
+     * is untouched. A problem with no samples yields an empty case list without
+     * compiling anything.
+     */
+    public SampleRunResult judgeSamples(String problemId, Language language, String code) {
+        Problem problem = problemRepository.findById(problemId)
+                .orElseThrow(() -> new ProblemNotFoundException("problem not found: " + problemId));
+
+        List<TestCase> samples = problem.testCases().stream().filter(TestCase::sample).toList();
+        if (samples.isEmpty()) {
+            return new SampleRunResult(null, List.of());
+        }
+
+        long timeoutMs = resolveTimeoutMs(problem, language);
+
+        try (SubmissionExecution execution = executionService.prepare(language, code)) {
+            if (execution.compilationFailed()) {
+                return new SampleRunResult(TextTruncator.truncate(execution.compileErrorOutput()), List.of());
+            }
+            if (execution.infrastructureFailed()) {
+                log.error("infrastructure failure preparing sample run for problem {} language {}: {}",
+                        problemId, language, execution.infrastructureFailureDetail());
+                List<SampleRunResult.SampleCaseResult> failed = new ArrayList<>();
+                for (int i = 0; i < samples.size(); i++) {
+                    TestCase sample = samples.get(i);
+                    failed.add(new SampleRunResult.SampleCaseResult(i + 1, sample.input(), sample.expectedOutput(),
+                            null, Verdict.ERROR, null, null));
+                }
+                return new SampleRunResult(null, failed);
+            }
+
+            List<SampleRunResult.SampleCaseResult> results = new ArrayList<>();
+            for (int i = 0; i < samples.size(); i++) {
+                TestCase sample = samples.get(i);
+                ExecutionResponse response = executionService.execute(execution, sample.input(), timeoutMs);
+                results.add(new SampleRunResult.SampleCaseResult(
+                        i + 1,
+                        sample.input(),
+                        sample.expectedOutput(),
+                        TextTruncator.truncate(response.stdout()),
+                        judgeCase(sample, response),
+                        blankToNull(TextTruncator.truncate(response.stderr())),
+                        response.userWallMs()));
+            }
+            return new SampleRunResult(null, results);
+        }
+    }
+
+    private static String blankToNull(String text) {
+        return text == null || text.isBlank() ? null : text;
     }
 
     /**

@@ -1,5 +1,15 @@
 import { apiFetch } from './client'
-import type { SubmissionRequest, SubmissionResponse } from '../types'
+import type { SampleRunResponse, SubmissionRequest, SubmissionResponse } from '../types'
+
+export function runSamples(
+  problemId: string,
+  request: SubmissionRequest,
+): Promise<SampleRunResponse> {
+  return apiFetch<SampleRunResponse>(`/api/v1/problems/${encodeURIComponent(problemId)}/samples/run`, {
+    method: 'POST',
+    body: JSON.stringify(request),
+  })
+}
 
 export function submitSolution(
   problemId: string,
