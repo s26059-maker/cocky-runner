@@ -1,26 +1,31 @@
-import { useMemo } from 'react'
-import CodeMirror, { EditorView, Prec, keymap } from '@uiw/react-codemirror'
-import { python } from '@codemirror/lang-python'
-import { cpp } from '@codemirror/lang-cpp'
-import { java } from '@codemirror/lang-java'
-import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
-import { tags as t } from '@lezer/highlight'
+import { useEffect, useRef } from 'react'
+import * as monaco from 'monaco-editor'
+import EditorWorker from 'monaco-editor/editor/editor.worker?worker'
+import Editor, { loader, type OnMount } from '@monaco-editor/react'
 import './CodeEditor.css'
 
+// Bundle Monaco locally (no CDN). Only the base editor worker is registered:
+// C/Python/Java use Monaco's built-in Monarch tokenizers, which run on the
+// main thread, so the ts/json/css/html language workers are never needed.
+self.MonacoEnvironment = {
+  getWorker: () => new EditorWorker(),
+}
+loader.config({ monaco })
+
 // Mirrors the backend's supported languages (see com.cocky.cockyrunner.domain.Language) -
-// both the enum names themselves (uppercase, matching what SubmissionController's
-// parseLanguage()/Language.valueOf() expect on the wire) and the CodeMirror language
-// support for each. Add a case here (and the matching @codemirror/lang-* extension)
-// if the backend ever grows a third language.
-const LANGUAGE_EXTENSIONS = {
-  C: [cpp()],
-  PYTHON: [python()],
-  JAVA: [java()],
+// the keys are the enum names themselves (uppercase, matching what SubmissionController's
+// parseLanguage()/Language.valueOf() expect on the wire), the values are the Monaco
+// language ids (registered in monaco-editor's languages/definitions/*/register.js).
+// Add a case here if the backend ever grows another language.
+const MONACO_LANGUAGE_IDS = {
+  C: 'c',
+  PYTHON: 'python',
+  JAVA: 'java',
 } as const
 
-export type SupportedLanguage = keyof typeof LANGUAGE_EXTENSIONS
+export type SupportedLanguage = keyof typeof MONACO_LANGUAGE_IDS
 
-export const SUPPORTED_LANGUAGES: SupportedLanguage[] = Object.keys(LANGUAGE_EXTENSIONS) as SupportedLanguage[]
+export const SUPPORTED_LANGUAGES: SupportedLanguage[] = Object.keys(MONACO_LANGUAGE_IDS) as SupportedLanguage[]
 
 // Starter skeleton inserted when the editor is empty (see ProblemDetailPage) -
 // never inserted over code the user has already written. Python gets none;
@@ -31,72 +36,67 @@ export const LANGUAGE_TEMPLATES: Record<SupportedLanguage, string> = {
   JAVA: 'import java.util.Scanner;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n    }\n}\n',
 }
 
-// Chrome (background, gutters, caret, selection, active line) built entirely
-// from the app's design tokens. Passed alongside theme="none" on <CodeMirror>
-// below so none of @uiw/react-codemirror's bundled default theme/highlighting
-// leaks in underneath this one. Language-independent, so - like syntaxTheme
-// below - this is a module-level constant, created once, not per render or
-// per language.
-const editorTheme = EditorView.theme(
-  {
-    '&': {
-      height: '100%',
-      backgroundColor: 'var(--bg-editor)',
-      color: 'var(--text-primary)',
-    },
-    '.cm-content': {
-      fontFamily: 'var(--font-mono)',
-      fontSize: 'var(--text-base)',
-      lineHeight: '1.6',
-      caretColor: 'var(--accent)',
-    },
-    '.cm-cursor, .cm-dropCursor': {
-      borderLeftColor: 'var(--accent)',
-    },
-    '.cm-scroller': {
-      overflow: 'auto',
-    },
-    '&.cm-focused': {
-      outline: 'none',
-    },
-    '.cm-gutters': {
-      backgroundColor: 'var(--bg-editor)',
-      color: 'var(--text-muted)',
-      border: 'none',
-    },
-    '.cm-lineNumbers .cm-activeLineGutter': {
-      backgroundColor: 'transparent',
-      color: 'var(--text-secondary)',
-    },
-    // Deliberately subtle - a barely-there lightening off --bg-editor itself
-    // (not --bg-hover, which is a much bigger jump meant for hover/selection
-    // states elsewhere), not the loud highlight CodeMirror's default theme
-    // uses for the active line.
-    '.cm-activeLine': {
-      backgroundColor: 'var(--bg-editor-active-line)',
-    },
-    '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': {
-      backgroundColor: 'var(--accent-muted) !important',
-    },
-  },
-  { dark: true },
-)
+const THEME_NAME = 'cocky-dark'
 
-// Syntax colors - the --syntax-* palette (src/styles/tokens.css), kept
-// separate from --verdict-* so a string literal is never visually confused
-// with a verdict badge elsewhere in the UI. Five categories, as specified:
-// keyword / string / number / comment / function name. Also language-
-// independent (Lezer's highlight tags are shared across grammars), so this
-// too is a module-level constant.
-const syntaxTheme = syntaxHighlighting(
-  HighlightStyle.define([
-    { tag: [t.keyword, t.controlKeyword, t.moduleKeyword, t.operatorKeyword], color: 'var(--syntax-keyword)' },
-    { tag: [t.function(t.variableName), t.function(t.propertyName)], color: 'var(--syntax-function)' },
-    { tag: [t.number, t.bool, t.null], color: 'var(--syntax-number)' },
-    { tag: [t.string, t.special(t.string)], color: 'var(--syntax-string)' },
-    { tag: [t.comment, t.lineComment, t.blockComment], color: 'var(--syntax-comment)', fontStyle: 'italic' },
-  ]),
-)
+/** Reads a CSS custom property off :root as a trimmed string. */
+function cssVar(name: string): string {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+}
+
+/** '#rrggbb' / '#rgb' / 'rgb(a)(r, g, b[, a])' -> 6- or 8-digit hex with leading '#', as Monaco requires. */
+function toHex(color: string): string {
+  const hex = (n: number) => Math.round(n).toString(16).padStart(2, '0')
+  const rgba = color.match(/^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,\s/]+([\d.]+))?\s*\)$/)
+  if (rgba) {
+    const alpha = rgba[4] === undefined ? '' : hex(parseFloat(rgba[4]) * 255)
+    return `#${hex(+rgba[1])}${hex(+rgba[2])}${hex(+rgba[3])}${alpha}`
+  }
+  if (/^#[0-9a-f]{3}$/i.test(color)) {
+    return '#' + color.slice(1).split('').map((c) => c + c).join('')
+  }
+  return color
+}
+
+const color = (name: string) => toHex(cssVar(name))
+const token = (name: string) => color(name).slice(1, 7)
+
+// Chrome + syntax colors from the app's design tokens (src/styles/tokens.css),
+// read once at mount so tokens.css stays the single source of truth. Same
+// five syntax categories as before - keyword / string / number / comment /
+// function name - and everything else Monaco's vs-dark would color on its own
+// (types, identifiers, operators, ...) is pinned to --text-primary, so only
+// those five stand out, as in the CodeMirror theme.
+function defineCockyTheme(m: typeof monaco) {
+  const plain = token('--text-primary')
+  m.editor.defineTheme(THEME_NAME, {
+    base: 'vs-dark',
+    inherit: true,
+    rules: [
+      { token: '', foreground: plain },
+      ...['identifier', 'type', 'type.identifier', 'variable', 'constant', 'delimiter', 'operator', 'annotation',
+        'predefined', 'tag', 'regexp', 'attribute.name', 'attribute.value', 'delimiter.bracket', 'metatag',
+      ].map((t) => ({ token: t, foreground: plain })),
+      { token: 'keyword', foreground: token('--syntax-keyword') },
+      { token: 'string', foreground: token('--syntax-string') },
+      { token: 'number', foreground: token('--syntax-number') },
+      { token: 'comment', foreground: token('--syntax-comment'), fontStyle: 'italic' },
+      { token: 'function', foreground: token('--syntax-function') },
+    ],
+    colors: {
+      'editor.background': color('--bg-editor'),
+      'editor.foreground': color('--text-primary'),
+      'editorCursor.foreground': color('--accent'),
+      'editor.lineHighlightBackground': color('--bg-editor-active-line'),
+      'editor.lineHighlightBorder': '#00000000',
+      'editor.selectionBackground': color('--accent-muted'),
+      'editor.inactiveSelectionBackground': color('--accent-muted'),
+      'editorLineNumber.foreground': color('--text-muted'),
+      'editorLineNumber.activeForeground': color('--text-secondary'),
+      'editorGutter.background': color('--bg-editor'),
+      'minimap.background': color('--bg-editor'),
+    },
+  })
+}
 
 interface CodeEditorProps {
   value: string
@@ -104,57 +104,51 @@ interface CodeEditorProps {
   language: SupportedLanguage
   readOnly?: boolean
   /**
-   * Fired on Ctrl+Enter / Cmd+Enter ("Mod-Enter", CodeMirror's cross-platform
-   * modifier - resolves to Ctrl on Windows/Linux and Cmd on Mac on its own,
-   * no manual platform check needed). Whether this is currently a valid
-   * submission (blank code, already submitting, etc.) is entirely the
+   * Fired on Ctrl+Enter / Cmd+Enter (KeyMod.CtrlCmd resolves to Ctrl on
+   * Windows/Linux and Cmd on Mac on its own). Whether this is currently a
+   * valid submission (blank code, already submitting, etc.) is entirely the
    * caller's concern - this just forwards the key press unconditionally.
-   *
-   * Registered at Prec.highest - see the comment at its definition below for
-   * why that's load-bearing, not decorative.
    */
   onSubmit: () => void
 }
 
 function CodeEditor({ value, onChange, language, readOnly = false, onSubmit }: CodeEditorProps) {
-  // Recomputed only when the language (or, in principle, onSubmit) actually
-  // changes - not on every keystroke - so editorTheme/syntaxTheme's stability
-  // as module constants isn't undone by rebuilding the array around them.
-  const extensions = useMemo(() => {
-    // Prec.highest is required, not optional polish: @codemirror/commands'
-    // defaultKeymap (pulled in by basicSetup, which @uiw/react-codemirror
-    // places ahead of this component's own `extensions` prop in the final
-    // combined list) already binds Mod-Enter to insertBlankLine. CodeMirror
-    // tries keymaps in precedence order and stops at the first handler that
-    // returns true ("the ones specified early or with high priority get
-    // checked first" - @codemirror/view's own doc comment on the keymap
-    // facet) - so without Prec.highest, defaultKeymap's binding wins every
-    // time (silently inserting a newline) and this one is never reached,
-    // regardless of where it sits in the extensions array.
-    const submitKeymap = Prec.highest(
-      keymap.of([
-        {
-          key: 'Mod-Enter',
-          run: () => {
-            onSubmit()
-            return true
-          },
-        },
-      ]),
-    )
-    return [...LANGUAGE_EXTENSIONS[language], submitKeymap, editorTheme, syntaxTheme]
-  }, [language, onSubmit])
+  // addCommand registers its callback once at mount, so it must read the
+  // latest onSubmit through a ref instead of closing over the first one.
+  const onSubmitRef = useRef(onSubmit)
+  useEffect(() => {
+    onSubmitRef.current = onSubmit
+  }, [onSubmit])
+
+  const handleMount: OnMount = (editor, m) => {
+    editor.addCommand(m.KeyMod.CtrlCmd | m.KeyCode.Enter, () => {
+      onSubmitRef.current()
+    })
+    // JetBrains Mono comes from @fontsource and may still be loading at mount;
+    // Monaco measures glyph widths once, so re-measure when fonts are ready.
+    void document.fonts.ready.then(() => m.editor.remeasureFonts())
+  }
 
   return (
-    <CodeMirror
+    <Editor
       className="code-editor"
       value={value}
-      onChange={onChange}
-      extensions={extensions}
-      theme="none"
-      readOnly={readOnly}
+      onChange={(v) => onChange(v ?? '')}
+      language={MONACO_LANGUAGE_IDS[language]}
+      theme={THEME_NAME}
+      beforeMount={defineCockyTheme}
+      onMount={handleMount}
+      loading={null}
       height="100%"
-      basicSetup={{ tabSize: 4 }}
+      options={{
+        tabSize: 4,
+        fontFamily: cssVar('--font-mono'),
+        fontSize: parseFloat(cssVar('--text-base')) || 13,
+        lineHeight: Math.round((parseFloat(cssVar('--text-base')) || 13) * 1.6),
+        automaticLayout: true,
+        minimap: { enabled: true },
+        readOnly,
+      }}
     />
   )
 }
