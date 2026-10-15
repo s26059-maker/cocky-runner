@@ -58,6 +58,7 @@ function toHex(color: string): string {
 }
 
 const color = (name: string) => toHex(cssVar(name))
+// Monaco 토큰 규칙(foreground)은 6자리 hex만 지원하므로 알파를 버린다. --syntax-*는 불투명 색만 써야 한다.
 const token = (name: string) => color(name).slice(1, 7)
 
 // Chrome + syntax colors from the app's design tokens (src/styles/tokens.css),
@@ -120,13 +121,25 @@ function CodeEditor({ value, onChange, language, readOnly = false, onSubmit }: C
     onSubmitRef.current = onSubmit
   }, [onSubmit])
 
+  // document.fonts.ready can resolve after unmount; skip remeasuring then.
+  // Reset on (re)mount so StrictMode's mount/cleanup/mount cycle stays correct.
+  const disposedRef = useRef(false)
+  useEffect(() => {
+    disposedRef.current = false
+    return () => {
+      disposedRef.current = true
+    }
+  }, [])
+
   const handleMount: OnMount = (editor, m) => {
     editor.addCommand(m.KeyMod.CtrlCmd | m.KeyCode.Enter, () => {
       onSubmitRef.current()
     })
     // JetBrains Mono comes from @fontsource and may still be loading at mount;
     // Monaco measures glyph widths once, so re-measure when fonts are ready.
-    void document.fonts.ready.then(() => m.editor.remeasureFonts())
+    void document.fonts.ready.then(() => {
+      if (!disposedRef.current) m.editor.remeasureFonts()
+    })
   }
 
   return (
