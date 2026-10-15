@@ -63,5 +63,10 @@ export interface ExecutionResponse {
   stdout: string
   stderr: string
   exitCode: number
+  // Host-measured, includes container startup - not the user program's time.
   executionTimeMs: number
+  // User program's own wall/CPU time. null when it couldn't be determined
+  // (CE, TIMEOUT, infra ERROR) - see ExecutionResponse on the backend.
+  userWallMs: number | null
+  userCpuMs: number | null
 }

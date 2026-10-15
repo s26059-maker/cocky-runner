@@ -122,10 +122,99 @@
   flex: none;
 }
 
+.font-size-control {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.font-size-control__value {
+  min-width: 2ch;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  text-align: center;
+}
+
+.result-tabs {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  height: 220px;
+  min-height: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.result-tabs__list {
+  display: flex;
+  flex: none;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.result-tabs__tab {
+  padding: var(--space-2) var(--space-4);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.result-tabs__tab:hover {
+  background: var(--bg-hover);
+}
+
+.result-tabs__tab:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.result-tabs__tab--active {
+  border-bottom-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.result-tabs__panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: var(--space-2);
+  overflow: auto;
+}
+
+.result-tabs__stdin {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: var(--space-2);
+  resize: none;
+  background: var(--bg-editor);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.result-tabs__stdin:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 0;
+}
+
 .solution-panel__shortcut-hint {
   color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
+}
+
+/* On the primary (--accent-solid) button, --text-muted is nearly the same
+   luminance as the background; use the button's own text color, dimmed. */
+.btn--primary .solution-panel__shortcut-hint {
+  color: inherit;
+  opacity: 0.7;
 }
 
 .solution-panel__language-hint {
