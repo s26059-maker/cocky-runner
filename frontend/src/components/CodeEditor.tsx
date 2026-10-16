@@ -115,9 +115,40 @@ interface CodeEditorProps {
   onRun?: () => void
   /** Editor font size in px; defaults to --text-base. lineHeight follows at x1.6. */
   fontSize?: number
+  /**
+   * false blocks pasting (Ctrl/Cmd+V, Shift+Insert, context menu, drag-and-drop
+   * of text/files). Defaults to true. A client-side deterrent only.
+   */
+  allowPaste?: boolean
 }
 
-function CodeEditor({ value, onChange, language, readOnly = false, onSubmit, onRun, fontSize }: CodeEditorProps) {
+/** Blocks every paste path Monaco exposes; listeners are released when the editor is disposed. */
+function blockPaste(editor: Parameters<OnMount>[0], m: typeof monaco) {
+  const stop = (e: Event) => {
+    e.preventDefault()
+    e.stopPropagation()
+  }
+  const dom = editor.getDomNode()
+  dom?.addEventListener('paste', stop, true)
+  dom?.addEventListener('drop', stop, true)
+
+  // Override Monaco's own paste keybindings with a no-op.
+  editor.addCommand(m.KeyMod.CtrlCmd | m.KeyCode.KeyV, () => {})
+  editor.addCommand(m.KeyMod.Shift | m.KeyCode.Insert, () => {})
+
+  // Safety net: if a paste still lands, roll it back.
+  const pasteSub = editor.onDidPaste(() => {
+    editor.trigger('paste-block', 'undo', null)
+  })
+
+  editor.onDidDispose(() => {
+    dom?.removeEventListener('paste', stop, true)
+    dom?.removeEventListener('drop', stop, true)
+    pasteSub.dispose()
+  })
+}
+
+function CodeEditor({ value, onChange, language, readOnly = false, onSubmit, onRun, fontSize, allowPaste = true }: CodeEditorProps) {
   // addCommand registers its callbacks once at mount, so they must read the
   // latest props through refs instead of closing over the first ones.
   const onSubmitRef = useRef(onSubmit)
@@ -149,6 +180,8 @@ function CodeEditor({ value, onChange, language, readOnly = false, onSubmit, onR
     void document.fonts.ready.then(() => {
       if (!disposedRef.current) m.editor.remeasureFonts()
     })
+
+    if (!allowPaste) blockPaste(editor, m)
   }
 
   const size = fontSize ?? (parseFloat(cssVar('--text-base')) || 13)
@@ -172,6 +205,7 @@ function CodeEditor({ value, onChange, language, readOnly = false, onSubmit, onR
         automaticLayout: true,
         minimap: { enabled: true },
         readOnly,
+        ...(allowPaste ? {} : { contextmenu: false, dragAndDrop: false }),
       }}
     />
   )
