@@ -1,5 +1,9 @@
 package com.cocky.cockyrunner.domain;
 
+import com.cocky.cockyrunner.diagnostic.Diagnostic;
+
+import java.util.List;
+
 /**
  * Summary of a judged submission. Deliberately excludes test case input/expectedOutput
  * and execution stdout so hidden test case content can never leak through this type.
@@ -25,6 +29,9 @@ package com.cocky.cockyrunner.domain;
  * @param userCpuMs          the largest user-program CPU time (user+sys) across the
  *                           executed test cases; null under the same conditions as
  *                           {@code userWallMs}
+ * @param diagnostics        parsed from the raw text behind {@code errorOutput}
+ *                           (CE, or a sample-case RE); empty whenever
+ *                           {@code errorOutput} is null
  */
 public record JudgeResult(
         Verdict verdict,
@@ -34,8 +41,19 @@ public record JudgeResult(
         long maxExecutionTimeMs,
         String errorOutput,
         Long userWallMs,
-        Long userCpuMs
+        Long userCpuMs,
+        List<Diagnostic> diagnostics
 ) {
+
+    public JudgeResult {
+        diagnostics = diagnostics == null ? List.of() : diagnostics;
+    }
+
+    public JudgeResult(Verdict verdict, int passedCount, int totalCount, Integer failedCaseNumber,
+                       long maxExecutionTimeMs, String errorOutput, Long userWallMs, Long userCpuMs) {
+        this(verdict, passedCount, totalCount, failedCaseNumber, maxExecutionTimeMs, errorOutput, userWallMs,
+                userCpuMs, List.of());
+    }
 
     /**
      * For a result where no test case ever ran at all - CE (compilation failed

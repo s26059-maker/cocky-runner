@@ -1,4 +1,5 @@
-import type { ExecutionResponse, ExecutionStatus } from '../types'
+import type { Diagnostic, ExecutionResponse, ExecutionStatus } from '../types'
+import DiagnosticList from './DiagnosticList'
 import Badge, { type BadgeTone } from './ui/Badge'
 import './ExecutionResult.css'
 
@@ -24,9 +25,10 @@ interface ExecutionResultProps {
   result: ExecutionResponse | null
   runError: string | null
   running?: boolean
+  onSelectDiagnostic?: (diagnostic: Diagnostic) => void
 }
 
-function ExecutionResult({ result, runError, running = false }: ExecutionResultProps) {
+function ExecutionResult({ result, runError, running = false, onSelectDiagnostic }: ExecutionResultProps) {
   if (running) {
     return (
       <div className="execution-result" role="status">
@@ -64,6 +66,7 @@ function ExecutionResult({ result, runError, running = false }: ExecutionResultP
           )}
         </span>
       </div>
+      <DiagnosticList diagnostics={result.diagnostics} onSelect={onSelectDiagnostic} />
       <section>
         <h3 className="execution-result__label">stdout</h3>
         <pre className="execution-result__block">{result.stdout}</pre>

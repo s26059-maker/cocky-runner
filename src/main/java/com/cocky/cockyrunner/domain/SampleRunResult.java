@@ -1,5 +1,7 @@
 package com.cocky.cockyrunner.domain;
 
+import com.cocky.cockyrunner.diagnostic.Diagnostic;
+
 import java.util.List;
 
 /**
@@ -10,11 +12,22 @@ import java.util.List;
  *
  * @param compileError the (truncated) compiler output when compilation failed,
  *                     in which case {@code cases} is empty; null otherwise
+ * @param diagnostics  parsed from the raw compile error, or else from the first
+ *                     RE case's stderr; empty when there is none
  */
 public record SampleRunResult(
         String compileError,
-        List<SampleCaseResult> cases
+        List<SampleCaseResult> cases,
+        List<Diagnostic> diagnostics
 ) {
+
+    public SampleRunResult {
+        diagnostics = diagnostics == null ? List.of() : diagnostics;
+    }
+
+    public SampleRunResult(String compileError, List<SampleCaseResult> cases) {
+        this(compileError, cases, List.of());
+    }
 
     /**
      * @param index        1-based position among the problem's sample cases

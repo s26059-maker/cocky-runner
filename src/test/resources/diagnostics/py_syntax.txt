@@ -1,0 +1,4 @@
+  File "/work/main.py", line 2
+    return x +
+              ^
+SyntaxError: invalid syntax

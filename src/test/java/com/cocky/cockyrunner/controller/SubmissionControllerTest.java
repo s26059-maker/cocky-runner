@@ -1,6 +1,8 @@
 package com.cocky.cockyrunner.controller;
 
 import com.cocky.cockyrunner.config.CorsProperties;
+import com.cocky.cockyrunner.diagnostic.Diagnostic;
+import com.cocky.cockyrunner.diagnostic.Severity;
 import com.cocky.cockyrunner.domain.JudgeResult;
 import com.cocky.cockyrunner.domain.Language;
 import com.cocky.cockyrunner.domain.Verdict;
@@ -13,6 +15,8 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+
+import java.util.List;
 
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
@@ -141,5 +145,32 @@ class SubmissionControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"language\":\"python\",\"code\":\"print(1)\"}"))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void diagnostics_areIncludedWhenErrorOutputIsParsed() throws Exception {
+        when(judgeService.judge(eq("a-plus-b"), eq(Language.PYTHON), any()))
+                .thenReturn(new JudgeResult(Verdict.RE, 0, 3, 1, 50, "ValueError: x", null, null,
+                        List.of(new Diagnostic(4, null, Severity.ERROR, "ValueError: x"))));
+
+        mockMvc.perform(post("/api/v1/problems/a-plus-b/submissions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"language\":\"python\",\"code\":\"print(1)\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.diagnostics[0].line").value(4))
+                .andExpect(jsonPath("$.diagnostics[0].severity").value("ERROR"))
+                .andExpect(jsonPath("$.diagnostics[0].message").value("ValueError: x"));
+    }
+
+    @Test
+    void noErrorOutput_diagnosticsIsEmptyArray() throws Exception {
+        when(judgeService.judge(eq("a-plus-b"), eq(Language.PYTHON), any()))
+                .thenReturn(JudgeResult.withoutTiming(Verdict.WA, 1, 3, 2, 120, null));
+
+        mockMvc.perform(post("/api/v1/problems/a-plus-b/submissions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"language\":\"python\",\"code\":\"print(1)\"}"))
+                .andExpect(jsonPath("$.diagnostics").isArray())
+                .andExpect(jsonPath("$.diagnostics").isEmpty());
     }
 }

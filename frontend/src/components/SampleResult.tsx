@@ -1,4 +1,5 @@
-import type { SampleRunResponse } from '../types'
+import type { Diagnostic, SampleRunResponse } from '../types'
+import DiagnosticList from './DiagnosticList'
 import Badge from './ui/Badge'
 import Button from './ui/Button'
 import { VERDICT_LABEL, VERDICT_TONE } from './verdictDisplay'
@@ -9,9 +10,10 @@ interface SampleResultProps {
   sampleError: string | null
   running?: boolean
   onSendInput: (input: string) => void
+  onSelectDiagnostic?: (diagnostic: Diagnostic) => void
 }
 
-function SampleResult({ result, sampleError, running = false, onSendInput }: SampleResultProps) {
+function SampleResult({ result, sampleError, running = false, onSendInput, onSelectDiagnostic }: SampleResultProps) {
   if (running) {
     return (
       <div className="sample-result" role="status">
@@ -41,6 +43,7 @@ function SampleResult({ result, sampleError, running = false, onSendInput }: Sam
         <div className="sample-result__header">
           <Badge tone="ce">CE · 컴파일 에러</Badge>
         </div>
+        <DiagnosticList diagnostics={result.diagnostics} onSelect={onSelectDiagnostic} />
         <pre className="sample-result__block">{result.compileError}</pre>
       </div>
     )
@@ -55,6 +58,7 @@ function SampleResult({ result, sampleError, running = false, onSendInput }: Sam
           {passed}/{result.cases.length} 통과
         </span>
       </div>
+      <DiagnosticList diagnostics={result.diagnostics} onSelect={onSelectDiagnostic} />
       {result.cases.length === 0 && (
         <p className="sample-result__empty">이 문제에는 예제가 없습니다.</p>
       )}

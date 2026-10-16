@@ -1,0 +1,12 @@
+main.c: In function 'helper':
+main.c:5:16: error: 'y' undeclared (first use in this function)
+    5 |     return x + y;
+      |                ^
+main.c:5:16: note: each undeclared identifier is reported only once for each function it appears in
+main.c: In function 'main':
+main.c:9:19: error: expected ';' before 'return'
+    9 |     printf("hi\n")
+      |                   ^
+      |                   ;
+   10 |     return helper(1);
+      |     ~~~~~~         

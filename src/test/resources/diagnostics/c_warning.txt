@@ -1,0 +1,7 @@
+main.c:2:2: warning: #warning custom note [-Wcpp]
+    2 | #warning custom note
+      |  ^~~~~~~
+main.c: In function 'main':
+main.c:5:15: warning: initialization discards 'const' qualifier from pointer target type [-Wdiscarded-qualifiers]
+    5 |     char *s = c;
+      |               ^

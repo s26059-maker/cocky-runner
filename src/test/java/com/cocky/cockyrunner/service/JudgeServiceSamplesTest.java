@@ -4,6 +4,8 @@ import com.cocky.cockyrunner.config.DockerProperties;
 import com.cocky.cockyrunner.config.LanguageDockerProperties;
 import com.cocky.cockyrunner.config.LanguageSpecRegistry;
 import com.cocky.cockyrunner.domain.ExecutionStatus;
+import com.cocky.cockyrunner.diagnostic.Diagnostic;
+import com.cocky.cockyrunner.diagnostic.Severity;
 import com.cocky.cockyrunner.domain.Language;
 import com.cocky.cockyrunner.domain.Problem;
 import com.cocky.cockyrunner.domain.SampleRunResult;
@@ -183,5 +185,45 @@ class JudgeServiceSamplesTest {
 
         assertThatThrownBy(() -> judgeService.judgeSamples("nope", Language.C, "code"))
                 .isInstanceOf(ProblemNotFoundException.class);
+    }
+
+    @Test
+    void compileError_hasDiagnosticsAndScrubbedMessage() {
+        stubProblem(new TestCase("in", "out", true));
+        SubmissionExecution execution = mock(SubmissionExecution.class);
+        when(execution.compilationFailed()).thenReturn(true);
+        when(execution.compileErrorOutput()).thenReturn("Main.java:4: error: ';' expected");
+        when(executionService.prepare(any(Language.class), anyString())).thenReturn(execution);
+
+        SampleRunResult result = judgeService.judgeSamples("p1", Language.JAVA, "code");
+
+        assertThat(result.diagnostics()).containsExactly(new Diagnostic(4, null, Severity.ERROR, "';' expected"));
+    }
+
+    @Test
+    void firstRuntimeErrorCase_providesDiagnosticsAndStderrIsScrubbed() {
+        stubProblem(new TestCase("in1", "out1", true), new TestCase("in2", "out2", true),
+                new TestCase("in3", "out3", true));
+        SubmissionExecution execution = readyExecution();
+        String first = "Traceback (most recent call last):\n  File \"/work/main.py\", line 3, in <module>\nKeyError: 'a'\n";
+        String second = "Traceback (most recent call last):\n  File \"/work/main.py\", line 8, in <module>\nOSError: x\n";
+        when(executionService.execute(eq(execution), anyString(), anyLong()))
+                .thenReturn(success("out1", 5L))
+                .thenReturn(new ExecutionResponse(ExecutionStatus.RUNTIME_ERROR, "", first, 1, 100, 7L, null))
+                .thenReturn(new ExecutionResponse(ExecutionStatus.RUNTIME_ERROR, "", second, 1, 100, 7L, null));
+
+        SampleRunResult result = judgeService.judgeSamples("p1", Language.PYTHON, "code");
+
+        assertThat(result.diagnostics()).containsExactly(new Diagnostic(3, null, Severity.ERROR, "KeyError: 'a'"));
+        assertThat(result.cases().get(1).stderr()).doesNotContain("/work/").contains("\"main.py\", line 3");
+    }
+
+    @Test
+    void noFailures_hasNoDiagnostics() {
+        stubProblem(new TestCase("in", "out", true));
+        SubmissionExecution execution = readyExecution();
+        when(executionService.execute(eq(execution), anyString(), anyLong())).thenReturn(success("out", 1L));
+
+        assertThat(judgeService.judgeSamples("p1", Language.C, "code").diagnostics()).isEmpty();
     }
 }
