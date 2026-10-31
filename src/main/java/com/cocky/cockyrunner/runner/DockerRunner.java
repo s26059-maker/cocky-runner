@@ -81,6 +81,10 @@ public class DockerRunner {
         this.workDirRoot = resolveWorkDirRoot(properties.workDir());
         try {
             Files.createDirectories(workDirRoot);
+            // Only the host user may list/enter the root; the per-submission UUID
+            // directories below stay world-writable and are bind-mounted directly,
+            // so containers are unaffected. Skipped on non-POSIX filesystems (Windows).
+            restrictToOwner(workDirRoot);
         } catch (IOException e) {
             throw new IllegalStateException(
                     "failed to create runner.docker.work-dir at " + workDirRoot, e);
@@ -143,6 +147,14 @@ public class DockerRunner {
             }
         }
         return DockerSubmissionExecution.ready(this, workDir, spec);
+    }
+
+    private static void restrictToOwner(Path dir) throws IOException {
+        try {
+            Files.setPosixFilePermissions(dir, PosixFilePermissions.fromString("rwx------"));
+        } catch (UnsupportedOperationException e) {
+            // non-POSIX filesystem: nothing to do
+        }
     }
 
     private static void makeWorldWritable(Path dir) throws IOException {
