@@ -3,9 +3,13 @@ package com.cocky.cockyrunner.runner;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.nio.channels.SeekableByteChannel;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.PosixFilePermissions;
 
 /**
  * The wrapper shell script that a run container is invoked with (wiring that into
@@ -13,7 +17,7 @@ import java.nio.file.StandardCopyOption;
  * It re-measures the user program's own wall/CPU time from inside the container -
  * separating that out from the container startup overhead that the host-side
  * {@code System.currentTimeMillis()} measurement in {@link DockerRunner#run}
- * can't distinguish from it - and writes the result to {@code /work/.timing}
+ * can't distinguish from it - and writes the result to {@code /timing/.timing}
  * rather than stdout/stderr, so the user program's own output stays
  * uncontaminated. {@link TimingParser} reads that file back on the host side
  * once the container exits.
@@ -34,7 +38,12 @@ public final class RunnerScript {
      */
     public static final String FILE_NAME = "run.sh";
 
-    /** Name of the file the script writes its timing breakdown to. */
+    /**
+     * Name of the file the script writes its timing breakdown to. Only this single file
+     * is bind-mounted (read-write) into a run container, at {@code /timing/.timing};
+     * the container's root filesystem and the workspace are read-only, so it can't be
+     * unlinked, renamed or replaced, and nothing else can be created next to it.
+     */
     public static final String TIMING_FILE_NAME = ".timing";
 
     private static final String RESOURCE_PATH = "/runner/run.sh";
@@ -63,11 +72,34 @@ public final class RunnerScript {
     }
 
     /**
-     * Deletes the previous run's {@value #TIMING_FILE_NAME} from {@code workDir},
-     * if present. The wrapper script itself truncates this file at the start of
-     * every run ({@code : > "$T"}), which already keeps a stale reading from one
-     * test case leaking into the next within the same submission; this is for
-     * callers that want the workspace clean before that first run even happens.
+     * Creates the empty timing file inside {@code timingDir} (the host directory that
+     * belongs to one submission; only this one file of it is ever mounted into a
+     * container, at {@code /timing/.timing}). The file is made world-writable (666)
+     * because the container runs as an unrelated uid; the directory itself is not.
+     * The file must exist before the first run: Docker would otherwise create a
+     * directory at a missing bind-mount source.
+     */
+    public static Path createTimingFile(Path timingDir) throws IOException {
+        Path file = timingDir.resolve(TIMING_FILE_NAME);
+        Files.createFile(file);
+        try {
+            Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rw-rw-rw-"));
+        } catch (UnsupportedOperationException e) {
+            // non-POSIX filesystem (Windows host): nothing to do
+        }
+        return file;
+    }
+
+    /**
+     * Truncates the timing file to zero length, in place, so nothing the previous test
+     * case's program wrote there can reach this one (the wrapper script itself also
+     * truncates it at the start of every run, {@code : > "$T"}; this is for the case
+     * where the container never starts). It must stay the same inode: it is bind-mounted
+     * into containers by file, so it is never deleted/recreated.
+     *
+     * <p>Opened with NOFOLLOW_LINKS, so a link in its place is an error rather than a
+     * truncation of the link's target. A missing file or one that cannot be truncated
+     * (e.g. a directory) fails.
      *
      * <p>Thrown as a checked {@link IOException} rather than wrapped in an
      * unchecked one - unlike {@link #writeTo}, this runs on every single test
@@ -75,7 +107,11 @@ public final class RunnerScript {
      * there is expected to handle the failure (translate it into an ERROR
      * response) rather than let it propagate as an uncaught exception.
      */
-    public static void clearTiming(Path workDir) throws IOException {
-        Files.deleteIfExists(workDir.resolve(TIMING_FILE_NAME));
+    public static void clearTiming(Path timingDir) throws IOException {
+        Path file = timingDir.resolve(TIMING_FILE_NAME);
+        try (SeekableByteChannel ignored = Files.newByteChannel(file, StandardOpenOption.WRITE,
+                StandardOpenOption.TRUNCATE_EXISTING, LinkOption.NOFOLLOW_LINKS)) {
+            // opening with TRUNCATE_EXISTING is the whole operation
+        }
     }
 }

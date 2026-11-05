@@ -22,7 +22,7 @@ import java.nio.file.Path;
  *       response, regardless of the workspace even existing.</li>
  * </ul>
  *
- * <p>{@link #close()} always delegates to {@link DockerRunner#cleanup(Path)}, which
+ * <p>{@link #close()} always delegates to {@link DockerRunner#cleanup(Path, Path)}, which
  * is a no-op for a null workDir and never throws - so it's safe to close an instance
  * from any of the three factories, whether or not a workspace was ever created.
  */
@@ -30,32 +30,37 @@ final class DockerSubmissionExecution implements SubmissionExecution {
 
     private final DockerRunner runner;
     private final Path workDir;
+    private final Path timingDir;
     private final LanguageSpec spec;
     private final boolean compilationFailed;
     private final String compileErrorOutput;
     private final ExecutionResponse infraFailureResponse;
 
-    private DockerSubmissionExecution(DockerRunner runner, Path workDir, LanguageSpec spec,
+    private DockerSubmissionExecution(DockerRunner runner, Path workDir, Path timingDir, LanguageSpec spec,
                                        boolean compilationFailed, String compileErrorOutput,
                                        ExecutionResponse infraFailureResponse) {
         this.runner = runner;
         this.workDir = workDir;
+        this.timingDir = timingDir;
         this.spec = spec;
         this.compilationFailed = compilationFailed;
         this.compileErrorOutput = compileErrorOutput;
         this.infraFailureResponse = infraFailureResponse;
     }
 
-    static DockerSubmissionExecution ready(DockerRunner runner, Path workDir, LanguageSpec spec) {
-        return new DockerSubmissionExecution(runner, workDir, spec, false, null, null);
+    static DockerSubmissionExecution ready(DockerRunner runner, Path workDir, Path timingDir, LanguageSpec spec) {
+        return new DockerSubmissionExecution(runner, workDir, timingDir, spec, false, null, null);
     }
 
-    static DockerSubmissionExecution compileFailure(DockerRunner runner, Path workDir, String compileErrorOutput) {
-        return new DockerSubmissionExecution(runner, workDir, null, true, compileErrorOutput, null);
+    static DockerSubmissionExecution compileFailure(DockerRunner runner, Path workDir, Path timingDir,
+                                                     String compileErrorOutput) {
+        return new DockerSubmissionExecution(runner, workDir, timingDir, null, true, compileErrorOutput, null);
     }
 
-    static DockerSubmissionExecution infraFailure(DockerRunner runner, Path workDir, ExecutionResponse errorResponse) {
-        return new DockerSubmissionExecution(runner, workDir, null, false, null, errorResponse);
+    /** {@code workDir}/{@code timingDir} may be null (or only one set) if workspace creation itself failed. */
+    static DockerSubmissionExecution infraFailure(DockerRunner runner, Path workDir, Path timingDir,
+                                                   ExecutionResponse errorResponse) {
+        return new DockerSubmissionExecution(runner, workDir, timingDir, null, false, null, errorResponse);
     }
 
     @Override
@@ -86,7 +91,7 @@ final class DockerSubmissionExecution implements SubmissionExecution {
         if (compilationFailed) {
             throw new IllegalStateException("cannot run a test case: compilation failed for this submission");
         }
-        return runner.run(workDir, spec, stdin, timeoutMs);
+        return runner.run(workDir, timingDir, spec, stdin, timeoutMs);
     }
 
     @Override
@@ -97,11 +102,11 @@ final class DockerSubmissionExecution implements SubmissionExecution {
         if (compilationFailed) {
             throw new IllegalStateException("cannot run a test case: compilation failed for this submission");
         }
-        return runner.runLimited(workDir, spec, stdin, timeoutMs, memoryLimitKb, maxStdoutBytes);
+        return runner.runLimited(workDir, timingDir, spec, stdin, timeoutMs, memoryLimitKb, maxStdoutBytes);
     }
 
     @Override
     public void close() {
-        runner.cleanup(workDir);
+        runner.cleanup(workDir, timingDir);
     }
 }

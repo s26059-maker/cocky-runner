@@ -70,13 +70,33 @@ class SandboxHardeningDockerTest {
     }
 
     @Test
-    void workspaceFileBomb_isKilledAndCleanedUp() throws IOException {
+    void workspaceIsReadOnly() {
+        RunApiResponse py = runPy("""
+                try:
+                    open('/work/new.txt', 'w').write('x')
+                    print('WROTE')
+                except OSError as e:
+                    print('DENIED')
+                """);
+        assertThat(py.status()).isEqualTo(RunStatus.OK);
+        assertThat(py.stdout()).isEqualTo("DENIED\n");
+
+        RunApiResponse c = run("c", """
+                #include <stdio.h>
+                int main(){ FILE*f=fopen("/work/new.txt","w"); puts(f?"WROTE":"DENIED"); return 0; }
+                """, 3000, 262144);
+        assertThat(c.stdout()).isEqualTo("DENIED\n");
+    }
+
+    @Test
+    void timingFileBomb_isStoppedByFsizeLimit_andCleanedUp() throws IOException {
+        // /timing/.timing is the only writable bind mount; growing it hits RLIMIT_FSIZE (16 MiB)
+        // long before the 64 MiB disk-poll cap.
         RunApiResponse r = runPy("""
-                i = 0
-                while True:
-                    with open('/work/f%d' % i, 'wb') as f:
+                with open('/timing/.timing', 'ab') as f:
+                    while True:
                         f.write(b'x' * 8_000_000)
-                    i += 1
+                        f.flush()
                 """);
         assertThat(r.status()).isEqualTo(RunStatus.RE);
         try (Stream<Path> left = Files.list(workDirRoot)) {
@@ -86,7 +106,7 @@ class SandboxHardeningDockerTest {
 
     @Test
     void singleHugeFile_isRefused() {
-        RunApiResponse r = runPy("open('/work/big', 'wb').write(b'x' * 100_000_000)\n");
+        RunApiResponse r = runPy("open('/timing/.timing', 'wb').write(b'x' * 100_000_000)\n");
         assertThat(r.status()).isEqualTo(RunStatus.RE);
     }
 

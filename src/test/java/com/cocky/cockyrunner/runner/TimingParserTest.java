@@ -120,6 +120,81 @@ class TimingParserTest {
         assertThat(timing.userCpuMs()).isNull();
     }
 
+    @Test
+    void symlinkedTimingFile_isNotRead_returnsUnmeasured(@TempDir Path outside) throws IOException {
+        Path target = outside.resolve("real-timing");
+        Files.write(target, List.of(
+                "START 1735900000000000000", "BEFORE", "0m0.000000s 0m0.000000s", "0m0.000000s 0m0.000000s",
+                "AFTER", "0m0.000000s 0m0.010000s", "0m0.140000s 0m0.010000s",
+                "END 1735900000200000000", "CODE 0"), StandardCharsets.UTF_8);
+        RunnerScriptTest.assumeSymlinks(workDir.resolve(TIMING_FILE_NAME), target);
+
+        ExecutionTiming timing = TimingParser.parse(workDir, 625L);
+
+        assertThat(timing.totalWallMs()).isEqualTo(625L);
+        assertThat(timing.userWallMs()).isNull();
+        assertThat(timing.userCpuMs()).isNull();
+    }
+
+    @Test
+    void emptyFile_returnsUnmeasured() throws IOException {
+        Files.createFile(workDir.resolve(TIMING_FILE_NAME));
+
+        ExecutionTiming timing = TimingParser.parse(workDir, 625L);
+
+        assertThat(timing.totalWallMs()).isEqualTo(625L);
+        assertThat(timing.userWallMs()).isNull();
+        assertThat(timing.userCpuMs()).isNull();
+    }
+
+    @Test
+    void timingEntryThatIsADirectory_returnsUnmeasured() throws IOException {
+        Files.createDirectory(workDir.resolve(TIMING_FILE_NAME));
+
+        ExecutionTiming timing = TimingParser.parse(workDir, 625L);
+
+        assertThat(timing.userWallMs()).isNull();
+        assertThat(timing.userCpuMs()).isNull();
+    }
+
+    @Test
+    void onlyTheFirst4KbAreRead() throws IOException {
+        // A valid prefix followed by lots of padding: the markers sit inside the first 4KB.
+        StringBuilder sb = new StringBuilder("""
+                START 1735900000000000000
+                BEFORE
+                0m0.000000s 0m0.000000s
+                0m0.000000s 0m0.000000s
+                AFTER
+                0m0.000000s 0m0.010000s
+                0m0.140000s 0m0.010000s
+                END 1735900000200000000
+                CODE 0
+                """);
+        sb.append("junk\n".repeat(1_000_000));
+        Files.writeString(workDir.resolve(TIMING_FILE_NAME), sb);
+
+        ExecutionTiming timing = TimingParser.parse(workDir, 625L);
+        assertThat(timing.userWallMs()).isEqualTo(200L);
+        assertThat(timing.userCpuMs()).isEqualTo(150L);
+
+        // Markers placed after the 4KB cut are never seen.
+        Files.writeString(workDir.resolve(TIMING_FILE_NAME),
+                "x\n".repeat(TimingParser.MAX_READ_BYTES) + "START 1735900000000000000\nEND 1735900000200000000\n");
+        assertThat(TimingParser.parse(workDir, 625L).userWallMs()).isNull();
+    }
+
+    @Test
+    void forgedGarbage_returnsNullsWithoutThrowing() throws IOException {
+        Files.write(workDir.resolve(TIMING_FILE_NAME), new byte[] {(byte) 0xff, (byte) 0xfe, 0, 1, 2, '\n', 'S'});
+
+        ExecutionTiming timing = TimingParser.parse(workDir, 625L);
+
+        assertThat(timing.totalWallMs()).isEqualTo(625L);
+        assertThat(timing.userWallMs()).isNull();
+        assertThat(timing.userCpuMs()).isNull();
+    }
+
     private void writeTiming(String... lines) throws IOException {
         Files.write(workDir.resolve(TIMING_FILE_NAME), List.of(lines), StandardCharsets.UTF_8);
     }

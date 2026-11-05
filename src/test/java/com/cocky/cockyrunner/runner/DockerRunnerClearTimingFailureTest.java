@@ -43,20 +43,17 @@ class DockerRunnerClearTimingFailureTest {
         DockerRunner runner = new DockerRunner(properties);
 
         Path workDir = Files.createDirectory(workDirRoot.resolve("submission"));
-        Path timingFile = workDir.resolve(RunnerScript.TIMING_FILE_NAME);
-        Files.writeString(timingFile, "leftover from a previous run");
-        assertThat(timingFile.toFile().setReadOnly()).as("could not make the fixture file read-only").isTrue();
+        Path timingDir = Files.createDirectory(workDirRoot.resolve("submission-timing"));
+        // A directory where the timing file should be: cannot be truncated on any OS/user,
+        // so clearTiming() throws before any docker process is launched.
+        Files.createDirectory(timingDir.resolve(RunnerScript.TIMING_FILE_NAME));
 
         LanguageSpec spec = new LanguageSpec("python:3.11-slim", "main.py", null, List.of("python3", "main.py"), 1.0, 1000);
 
-        try {
-            ExecutionResponse response = runner.run(workDir, spec, "", 1000L);
+        ExecutionResponse response = runner.run(workDir, timingDir, spec, "", 1000L);
 
-            assertThat(response.status()).isEqualTo(ExecutionStatus.ERROR);
-            assertThat(response.userWallMs()).isNull();
-            assertThat(response.userCpuMs()).isNull();
-        } finally {
-            timingFile.toFile().setWritable(true);
-        }
+        assertThat(response.status()).isEqualTo(ExecutionStatus.ERROR);
+        assertThat(response.userWallMs()).isNull();
+        assertThat(response.userCpuMs()).isNull();
     }
 }
