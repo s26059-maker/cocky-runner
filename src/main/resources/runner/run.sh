@@ -1,6 +1,6 @@
 #!/bin/sh
 umask 000
-T=/work/.timing
+T=/timing/.timing
 : > "$T"
 echo "START $(date +%s%N)" >> "$T"
 { echo BEFORE; times; } >> "$T"

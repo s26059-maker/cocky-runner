@@ -10,7 +10,9 @@ import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -43,6 +45,17 @@ public class DockerRunner {
 
     /** Where the submission workspace is bind-mounted inside every container. */
     private static final String CONTAINER_WORK_DIR = "/work";
+
+    /**
+     * Where the per-submission timing <em>file</em> is bind-mounted (read-write) in run
+     * containers. Only the file is mounted, not its directory: /timing itself is part of
+     * the read-only root filesystem, so the program can't create anything beside the
+     * file, and a mounted file can't be unlinked or renamed.
+     */
+    private static final String CONTAINER_TIMING_FILE = "/timing/" + RunnerScript.TIMING_FILE_NAME;
+
+    /** Host-side name of a submission's timing dir: the workspace's name plus this, as a sibling. */
+    static final String TIMING_DIR_SUFFIX = "-timing";
 
     /** Fixed timeout for the compile step, independent of any per-test-case run timeout. */
     static final long COMPILE_TIMEOUT_MS = 10_000L;
@@ -113,14 +126,22 @@ public class DockerRunner {
      * outcome.
      */
     public SubmissionExecution prepareSubmission(LanguageSpec spec, String code) {
-        Path workDir;
+        Path workDir = null;
+        Path timingDir = null;
         try {
             workDir = Files.createDirectory(workDirRoot.resolve(UUID.randomUUID().toString()));
-            // The container runs as an unprivileged uid that is not the owner of this
-            // directory, so it must be world-writable for .timing / .class / binaries.
+            // The compile container runs as an unprivileged uid that is not the owner of
+            // this directory, so it must be world-writable for .class / binaries.
             // Skipped where POSIX permissions don't exist (Windows hosts; Docker Desktop
             // bind mounts are writable for any container uid there).
             makeWorldWritable(workDir);
+            // Separate from the workspace: the workspace is mounted read-only while a
+            // program runs, and the single .timing file in here (pre-created, 666) is
+            // the only thing besides /tmp it can write. The directory itself is never
+            // mounted, so it stays owner-only; same lifetime as the workspace.
+            timingDir = Files.createDirectory(workDirRoot.resolve(workDir.getFileName() + TIMING_DIR_SUFFIX));
+            restrictToOwner(timingDir);
+            RunnerScript.createTimingFile(timingDir);
             Files.writeString(workDir.resolve(spec.sourceFileName()), code, StandardCharsets.UTF_8);
             // Written once per submission, alongside the source - every run() call
             // below invokes this rather than the user's program directly, so it must
@@ -128,7 +149,8 @@ public class DockerRunner {
             RunnerScript.writeTo(workDir);
         } catch (IOException | UncheckedIOException e) {
             log.error("failed to prepare submission workspace", e);
-            return DockerSubmissionExecution.infraFailure(this, null,
+            // Whatever was created before the failure is released by the execution's close().
+            return DockerSubmissionExecution.infraFailure(this, workDir, timingDir,
                     errorResponse("failed to prepare workspace: " + e.getMessage()));
         }
 
@@ -136,17 +158,18 @@ public class DockerRunner {
             CompileOutcome outcome = compile(workDir, spec, code.length());
             switch (outcome.kind()) {
                 case COMPILE_ERROR -> {
-                    return DockerSubmissionExecution.compileFailure(this, workDir, outcome.message());
+                    return DockerSubmissionExecution.compileFailure(this, workDir, timingDir, outcome.message());
                 }
                 case INFRA_ERROR -> {
-                    return DockerSubmissionExecution.infraFailure(this, workDir, errorResponse(outcome.message()));
+                    return DockerSubmissionExecution.infraFailure(this, workDir, timingDir,
+                            errorResponse(outcome.message()));
                 }
                 case SUCCESS -> {
                     // fall through to a ready-to-run execution below
                 }
             }
         }
-        return DockerSubmissionExecution.ready(this, workDir, spec);
+        return DockerSubmissionExecution.ready(this, workDir, timingDir, spec);
     }
 
     private static void restrictToOwner(Path dir) throws IOException {
@@ -166,10 +189,12 @@ public class DockerRunner {
     }
 
     private static long directorySize(Path dir) {
+        // Files.walk does not follow links; the NOFOLLOW checks keep a symlink from being
+        // counted as (or sized like) whatever it points at.
         try (Stream<Path> paths = Files.walk(dir)) {
             return paths.mapToLong(path -> {
                 try {
-                    return Files.isRegularFile(path) ? Files.size(path) : 0L;
+                    return Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) ? Files.size(path) : 0L;
                 } catch (IOException e) {
                     return 0L;
                 }
@@ -181,8 +206,22 @@ public class DockerRunner {
 
     private enum WaitResult { EXITED, TIMEOUT, DISK_EXCEEDED }
 
-    /** Waits for the process like waitFor(timeout), but also polls the workspace size. */
-    private WaitResult awaitExit(Process process, Path workDir, long timeoutMs) throws InterruptedException {
+    /** Size of the (host-created) timing file itself; a link or anything unreadable counts as 0. */
+    private static long timingFileSize(Path timingDir) {
+        try {
+            return Files.readAttributes(timingDir.resolve(RunnerScript.TIMING_FILE_NAME),
+                    BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS).size();
+        } catch (IOException e) {
+            return 0L;
+        }
+    }
+
+    /**
+     * Waits for the process like waitFor(timeout), but also polls the combined size of
+     * the workspace and the timing file (the one file the program can write besides /tmp).
+     */
+    private WaitResult awaitExit(Process process, Path workDir, Path timingDir, long timeoutMs)
+            throws InterruptedException {
         long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
         while (true) {
             long remainingMs = TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime());
@@ -192,7 +231,7 @@ public class DockerRunner {
             if (process.waitFor(Math.min(DISK_POLL_MS, remainingMs), TimeUnit.MILLISECONDS)) {
                 return WaitResult.EXITED;
             }
-            if (directorySize(workDir) > MAX_WORKSPACE_BYTES) {
+            if (directorySize(workDir) + timingFileSize(timingDir) >MAX_WORKSPACE_BYTES) {
                 return WaitResult.DISK_EXCEEDED;
             }
         }
@@ -207,8 +246,8 @@ public class DockerRunner {
      * only {@link DockerSubmissionExecution} should call this, so every run goes through
      * a workspace that {@link #prepareSubmission(LanguageSpec, String)} set up first.
      */
-    ExecutionResponse run(Path workDir, LanguageSpec spec, String stdin, long timeoutMs) {
-        return runInternal(workDir, spec, stdin, timeoutMs, null, properties.maxOutputBytes()).response();
+    ExecutionResponse run(Path workDir, Path timingDir, LanguageSpec spec, String stdin, long timeoutMs) {
+        return runInternal(workDir, timingDir, spec, stdin, timeoutMs, null, properties.maxOutputBytes()).response();
     }
 
     /**
@@ -217,14 +256,14 @@ public class DockerRunner {
      * {@code State.OOMKilled} can be inspected after it exits) and removed explicitly
      * afterwards; swap is disabled so the limit is a real ceiling.
      */
-    RunOutcome runLimited(Path workDir, LanguageSpec spec, String stdin, long timeoutMs, long memoryLimitKb,
-                         int maxStdoutBytes) {
-        return runInternal(workDir, spec, stdin, timeoutMs, memoryLimitKb, maxStdoutBytes);
+    RunOutcome runLimited(Path workDir, Path timingDir, LanguageSpec spec, String stdin, long timeoutMs,
+                         long memoryLimitKb, int maxStdoutBytes) {
+        return runInternal(workDir, timingDir, spec, stdin, timeoutMs, memoryLimitKb, maxStdoutBytes);
     }
 
     /** @param memoryLimitKb null = legacy behaviour (default memory, {@code --rm}, no OOM detection) */
-    private RunOutcome runInternal(Path workDir, LanguageSpec spec, String stdin, long timeoutMs, Long memoryLimitKb,
-                                   int maxStdoutBytes) {
+    private RunOutcome runInternal(Path workDir, Path timingDir, LanguageSpec spec, String stdin, long timeoutMs,
+                                   Long memoryLimitKb, int maxStdoutBytes) {
         validateTimeout(timeoutMs);
         boolean limited = memoryLimitKb != null;
         String containerName = "run-" + UUID.randomUUID();
@@ -244,19 +283,25 @@ public class DockerRunner {
             // its own IOException) so a failure here - e.g. a workspace file that
             // became undeletable - is reported as an ERROR response by the catch
             // below instead of propagating out of run() uncaught.
-            RunnerScript.clearTiming(workDir);
+            RunnerScript.clearTiming(timingDir);
 
             List<String> wrappedCommand = new ArrayList<>();
             wrappedCommand.add("sh");
             wrappedCommand.add(CONTAINER_WORK_DIR + "/" + RunnerScript.FILE_NAME);
             wrappedCommand.addAll(spec.runCommand());
-            // Not read-only: the wrapper needs to write /work/.timing. The compile
-            // step (below) still mounts read-write for its own reasons (writing the
-            // compiled binary) and is untouched by this - it never runs the wrapper.
+            // The user program can't modify the workspace (binary, run.sh, source): it is
+            // mounted read-only. Its only writable places are /tmp (tmpfs) and the
+            // single mounted file /timing/.timing, where the wrapper writes the timing. The compile step (below) is the only
+            // one that mounts the workspace read-write.
+            List<String> mounts = List.of(
+                    normalizeForDocker(workDir) + ":" + CONTAINER_WORK_DIR + ":ro",
+                    normalizeForDocker(timingDir.resolve(RunnerScript.TIMING_FILE_NAME)) + ":"
+                            + CONTAINER_TIMING_FILE);
             List<String> command = limited
-                    ? buildContainerCommand(containerName, workDir, spec.dockerImage(), wrappedCommand, false,
+                    ? buildContainerCommand(containerName, mounts, spec.dockerImage(), wrappedCommand,
                             memoryLimitKb + "k", false)
-                    : buildContainerCommand(containerName, workDir, spec.dockerImage(), wrappedCommand, false);
+                    : buildContainerCommand(containerName, mounts, spec.dockerImage(), wrappedCommand,
+                            properties.memory(), true);
             Process process = new ProcessBuilder(command).start();
 
             writeStdin(process, stdin);
@@ -266,7 +311,7 @@ public class DockerRunner {
             Thread stdoutThread = startDrainThread(stdoutCollector, "docker-stdout-" + containerName);
             Thread stderrThread = startDrainThread(stderrCollector, "docker-stderr-" + containerName);
 
-            WaitResult waitResult = awaitExit(process, workDir, timeoutMs);
+            WaitResult waitResult = awaitExit(process, workDir, timingDir, timeoutMs);
             if (waitResult != WaitResult.EXITED) {
                 process.destroyForcibly();
                 killContainer(containerName);
@@ -293,7 +338,7 @@ public class DockerRunner {
             int exitCode = process.exitValue();
             String stdout = stdoutCollector.output();
             String stderr = stderrCollector.output();
-            ExecutionTiming timing = TimingParser.parse(workDir, elapsedMs(startNanos));
+            ExecutionTiming timing = TimingParser.parse(timingDir, elapsedMs(startNanos));
 
             if (exitCode == DOCKER_CLI_FAILURE_EXIT_CODE) {
                 log.error("docker run failed for container {}: {}", containerName, stderr);
@@ -309,7 +354,7 @@ public class DockerRunner {
 
         } catch (IOException e) {
             // Covers both a docker process that never launched and clearTiming()
-            // failing to delete a leftover .timing file - either way there's no run
+            // failing to truncate the .timing file - either way there's no run
             // to report on, and elapsedMs(startNanos) here is not meaningful (the
             // run itself may never have started) so it's not worth distinguishing
             // further.
@@ -376,7 +421,9 @@ public class DockerRunner {
     private CompileOutcome compile(Path workDir, LanguageSpec spec, int sourceLength) {
         String containerName = "compile-" + UUID.randomUUID();
         try {
-            List<String> command = buildContainerCommand(containerName, workDir, spec.dockerImage(), spec.compileCommand(), false);
+            List<String> command = buildContainerCommand(containerName,
+                    List.of(normalizeForDocker(workDir) + ":" + CONTAINER_WORK_DIR),
+                    spec.dockerImage(), spec.compileCommand(), properties.memory(), true);
             Process process = new ProcessBuilder(command).start();
 
             writeStdin(process, null);
@@ -451,13 +498,9 @@ public class DockerRunner {
         return thread;
     }
 
-    private List<String> buildContainerCommand(String containerName, Path workDir, String image, List<String> command,
-                                                 boolean readOnlyMount) {
-        return buildContainerCommand(containerName, workDir, image, command, readOnlyMount, properties.memory(), true);
-    }
-
-    private List<String> buildContainerCommand(String containerName, Path workDir, String image, List<String> command,
-                                                 boolean readOnlyMount, String memory, boolean autoRemove) {
+    /** @param mounts complete {@code -v} values ({@code host:container[:opts]}) */
+    private List<String> buildContainerCommand(String containerName, List<String> mounts, String image,
+                                                 List<String> command, String memory, boolean autoRemove) {
         List<String> full = new ArrayList<>();
         full.add("docker");
         full.add("run");
@@ -475,13 +518,17 @@ public class DockerRunner {
         full.add("--read-only");
         full.add("--tmpfs=/tmp:rw,noexec,nosuid,size=" + TMPFS_SIZE);
         full.add("--env=HOME=/tmp");
+        // the workspace is read-only while running; don't let python try (and fail) to write __pycache__
+        full.add("--env=PYTHONDONTWRITEBYTECODE=1");
         full.add("--ulimit=fsize=" + MAX_FILE_BYTES + ":" + MAX_FILE_BYTES);
         full.add("--cpus=" + properties.cpus());
         full.add("--pids-limit=" + properties.pidsLimit());
         full.add("--name");
         full.add(containerName);
-        full.add("-v");
-        full.add(normalizeForDocker(workDir) + ":" + CONTAINER_WORK_DIR + (readOnlyMount ? ":ro" : ""));
+        for (String mount : mounts) {
+            full.add("-v");
+            full.add(mount);
+        }
         full.add("-w");
         full.add(CONTAINER_WORK_DIR);
         full.add(image);
@@ -516,12 +563,22 @@ public class DockerRunner {
     }
 
     /**
-     * Recursively deletes a submission's workspace. Package-visible: called by
-     * {@link DockerSubmissionExecution#close()} once all test cases for a
-     * submission have run. Never throws - a cleanup failure must not affect the
-     * grading result already produced.
+     * Recursively deletes a submission's workspace and timing directory.
+     * Package-visible: called by {@link DockerSubmissionExecution#close()} once all
+     * test cases for a submission have run. Never throws - a cleanup failure must not
+     * affect the grading result already produced. Either argument may be null.
      */
-    void cleanup(Path workDir) {
+    void cleanup(Path workDir, Path timingDir) {
+        deleteQuietly(workDir);
+        deleteQuietly(timingDir);
+    }
+
+    /**
+     * Files.walk does not follow symbolic links (no FOLLOW_LINKS option), and
+     * Files.delete on a link removes the link itself, so a link planted by the
+     * program can never make this delete its target.
+     */
+    private void deleteQuietly(Path workDir) {
         if (workDir == null) {
             return;
         }

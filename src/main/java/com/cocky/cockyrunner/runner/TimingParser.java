@@ -1,7 +1,10 @@
 package com.cocky.cockyrunner.runner;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -11,7 +14,9 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Parses the {@code .timing} file that {@link RunnerScript}'s wrapper writes
- * inside the container's {@code /work} directory, breaking the host-measured
+ * to the single file mounted at the container's {@code /timing/.timing} (which the
+ * untrusted program can also write to, so it is treated as untrusted display-only
+ * input: forged or malformed content yields null fields, never an exception), breaking the host-measured
  * wall time down into the user program's own wall time and CPU time (see
  * {@link ExecutionTiming}).
  *
@@ -29,6 +34,9 @@ import org.slf4j.LoggerFactory;
 public final class TimingParser {
 
     private static final Logger log = LoggerFactory.getLogger(TimingParser.class);
+
+    /** A genuine timing file is ~250 bytes; anything past this is not read. */
+    static final int MAX_READ_BYTES = 4096;
 
     private static final String START_PREFIX = "START ";
     private static final String END_PREFIX = "END ";
@@ -61,22 +69,37 @@ public final class TimingParser {
      *                    result regardless of what (if anything) the timing file
      *                    yields
      */
-    public static ExecutionTiming parse(Path workDir, long totalWallMs) {
-        Path timingFile = workDir.resolve(RunnerScript.TIMING_FILE_NAME);
+    public static ExecutionTiming parse(Path timingDir, long totalWallMs) {
+        Path timingFile = timingDir.resolve(RunnerScript.TIMING_FILE_NAME);
         List<String> lines;
         try {
-            if (!Files.exists(timingFile)) {
-                return ExecutionTiming.unmeasured(totalWallMs);
-            }
-            lines = Files.readAllLines(timingFile);
+            lines = readHead(timingFile);
         } catch (IOException e) {
+            // Missing/unreadable: the host creates this file up front and the program can't
+            // replace it, so this is an anomaly worth a warning, not a normal outcome.
             log.warn("failed to read timing file {}", timingFile, e);
+            return ExecutionTiming.unmeasured(totalWallMs);
+        }
+        if (lines.isEmpty()) {
+            // Nothing written (the wrapper never ran, or the program truncated it): unmeasured.
             return ExecutionTiming.unmeasured(totalWallMs);
         }
 
         Long userWallMs = parseWallMs(lines, timingFile);
         Long userCpuMs = parseCpuMs(lines, timingFile);
         return new ExecutionTiming(totalWallMs, userWallMs, userCpuMs);
+    }
+
+    /**
+     * Reads at most {@link #MAX_READ_BYTES} from the start of the file (never the whole
+     * thing - the program can write up to the fsize limit into it). NOFOLLOW_LINKS is
+     * belt-and-braces: the file is a host-created inode the program can't swap for a link.
+     */
+    private static List<String> readHead(Path file) throws IOException {
+        try (InputStream in = Files.newInputStream(file, LinkOption.NOFOLLOW_LINKS)) {
+            byte[] head = in.readNBytes(MAX_READ_BYTES);
+            return new String(head, StandardCharsets.UTF_8).lines().toList();
+        }
     }
 
     private static Long parseWallMs(List<String> lines, Path timingFile) {
