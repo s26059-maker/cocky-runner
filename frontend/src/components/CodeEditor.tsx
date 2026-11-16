@@ -4,6 +4,7 @@ import EditorWorker from 'monaco-editor/editor/editor.worker?worker'
 import Editor, { loader, type OnMount } from '@monaco-editor/react'
 import type { Diagnostic } from '../types'
 import './CodeEditor.css'
+import { registerFormatters } from './formatCode'
 
 // Bundle Monaco locally (no CDN). Only the base editor worker is registered:
 // C/Python/Java use Monaco's built-in Monarch tokenizers, which run on the
@@ -12,6 +13,7 @@ self.MonacoEnvironment = {
   getWorker: () => new EditorWorker(),
 }
 loader.config({ monaco })
+registerFormatters(monaco)
 
 // Mirrors the backend's supported languages (see com.cocky.cockyrunner.domain.Language) -
 // the keys are the enum names themselves (uppercase, matching what SubmissionController's
